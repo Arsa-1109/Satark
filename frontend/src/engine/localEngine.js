@@ -159,6 +159,9 @@ const OFFICIAL_DOMAINS = [
   "github.com", "linkedin.com", "naukri.com", "internshala.com", "zerodha.com",
   "groww.in", "cred.club", "jiocinema.com", "hotstar.com", "youtu.be",
   "youtube.com", "forms.gle", "google.com",
+  "sihub.in", "billdesk.com", "hdfcbk.io", "kotak.in", "axbk.in",
+  "sbi.in", "icicibank.in", "canarabank.com", "unionbankofindia.co.in",
+  "federalbank.co.in", "yesbank.in", "indusind.com", "idfcfirstbank.com",
 ];
 
 const BRAND_KEYWORDS = [
@@ -202,7 +205,10 @@ const APK_RE = /(?:\.apk\b|(?:download|install).{0,25}(?:app|apk|file))/i;
 const REMOTE_APP_RE = /\b(?:anydesk|teamviewer|quicksupport|rustdesk|ammyy|screen\s*share)\b/i;
 const UPI_URI_RE = /upi:\/\/pay\?[^\s<>"']+/gi;
 const WA_TG_RE = /(?:wa\.me\/|chat\.whatsapp\.com\/|t\.me\/|\b(?:join|contact|message|dm)\b.{0,20}\b(?:whatsapp|telegram)\b|\btelegram\s+(?:group|channel|task|hr|bot|link|id)\b)/i;
-const PHONE_CALLBACK_RE = /(?:\b(?:call|contact|whatsapp|helpline|dial)\b.{0,35}(?:\+91[-\s]?)?[6-9]\d{9}|(?:\+91[-\s]?)?[6-9]\d{9}.{0,35}\b(?:call|contact|whatsapp|helpline|dial)\b)/i;
+const PHONE_CALLBACK_RE = /(?:\b(?:call|contact|whatsapp|helpline|dial)\b.{0,35}(?<!\d)(?:\+91[-\s]?)?[6-9]\d{9}(?!\d)|(?<!\d)(?:\+91[-\s]?)?[6-9]\d{9}(?!\d).{0,35}\b(?:call|contact|whatsapp|helpline|dial)\b)/i;
+const BANK_DISPUTE_PHONE_RE = /\b(?:not\s+you|if\s+not\s+done\s+by\s+you|to\s+report|to\s+dispute|sms\s+block|forward\s+this\s+sms\s+to)\b/i;
+const SENDER_DLT_RE = /^[A-Z]{2}-[A-Z0-9]{5,6}(?:-([TSGP]))?$/i;
+const SENDER_MOBILE_RE = /^(?:\+91[-\s]?)?[6-9]\d{9}$/;
 const TOLLFREE_RE = /(?:1800[-\s]?\d{3}[-\s]?\d{4}|\b1930\b)/;
 const CURRENCY_RE = /(?:(?:rs\.?|inr|₹)\s*(\d[\d,]*(?:\.\d+)?)|\b(\d+(?:\.\d+)?)\s*(lakh|crore|k)\b)/gi;
 const ASKS_OTP_RE = /\b(?:share|send|enter|tell|provide|verify|batao|bhejo)\b.{0,20}\b(?:otp|pin|cvv|mpin|password)\b/i;
@@ -212,8 +218,8 @@ const PHYSICAL_HANDOVER_RE = /\b(?:driver|trip|cab|ride|uber|ola|rapido|delivery
 const UPI_VPA_RE = /\b[a-z0-9.\-_]{3,}@(?:ybl|okicici|okaxis|oksbi|okhdfcbank|paytm|ibl|axl|upi|apl)\b/i;
 const DLT_HEADER_RE = /\b[A-Z]{2}-[A-Z0-9]{5,6}(?:-[TSGP])?\b/;
 const DLT_TX_SUFFIX_RE = /\b[A-Z]{2}-[A-Z0-9]{5,6}-[TSG]\b/;
-const BANK_TX_RE = /\b(?:debited|credited|spent|withdrawn)\b.{0,40}\b(?:a\/c|acct|account|card)\b.{0,20}(?:x{1,4}\d{3,4}|\*{2,4}\d{3,4})/i;
-const BANK_TX_META_RE = /\b(?:avail|bal|balance|upi|imps|neft|ref)\b/i;
+const BANK_TX_RE = /(?:\b(?:debited|credited|spent|withdrawn|auto-debited|autodebited)\b.{0,45}\b(?:a\/c|ac|acct|account|card)\b.{0,25}(?:x{1,8}\d{3,4}|\*{1,4}\d{3,4}|ending\s+\d{4}|\.\.\.\d{4})|\b(?:a\/c|ac|acct|account|card)\b.{0,25}(?:x{1,8}\d{3,4}|\*{1,4}\d{3,4}|ending\s+\d{4}|\.\.\.\d{4}).{0,45}\b(?:debited|credited|spent|withdrawn|declined)\b|\b(?:amt\s+)?sent\s+(?:rs\.?|inr|₹)\s*[\d,]+.{0,35}\b(?:from|a\/c|ac)\b|\bthank\s+you\s+for\s+using\s+your\b.{0,35}\b(?:debit|credit)\s+card\b|\btransaction\s+of\s+(?:rs\.?|inr|₹)\s*[\d,]+.{0,50}\bcard\b.{0,30}\b(?:declined|approved)\b|\b(?:neft|imps|rtgs)\s+transfer\s+of\s+(?:rs\.?|inr|₹)\s*[\d,]+.{0,60}\b(?:processed|credited|completed)\b|\bcheque\s+no\.?\s*\d+.{0,50}\bcleared\b)/i;
+const BANK_TX_META_RE = /\b(?:avail|avl|bal|balance|upi|imps|neft|rtgs|ref|refno|limit|mandate|standing|cheque|ending|declined|sent|towards|salary|rs|inr)\b/i;
 const DELIVERY_ACTION_RE = /\b(?:out for delivery|dispatched|delivered|awb|tracking|order\s*#)\b/i;
 const DELIVERY_BRAND_RE = /\b(?:amazon|flipkart|swiggy|zomato|bluedart|delhivery|dtdc|ekart|myntra)\b/i;
 const CASUAL_HINGLISH_RE = /\b(?:bhai|yaar|bro|kal|mummy|papa|ghar|milte|dedunga|deta hu|bhej de|ok|haha)\b/i;
@@ -269,7 +275,7 @@ export function parseUpiUris(text) {
   return results;
 }
 
-export function extractForensics(norm) {
+export function extractForensics(norm, sender = null) {
   const clean = norm.cleanText;
   const canon = norm.canonicalText;
   const cleanLower = clean.toLowerCase();
@@ -352,13 +358,24 @@ export function extractForensics(norm) {
     addTrigger("UPI / cashback", "UPI payment/PIN paired with receive/cashback claim", "risk");
   }
 
-  const phoneM = clean.match(PHONE_CALLBACK_RE);
-  const has_indian_phone_callback = phoneM ? 1.0 : 0.0;
-  if (phoneM) addTrigger(phoneM[0].slice(0, 36), "Personal 10-digit mobile callback number", "risk");
-
   const tollM = clean.match(TOLLFREE_RE);
   const has_tollfree_official = tollM ? 1.0 : 0.0;
   if (tollM) addTrigger(tollM[0], "Official 1800/1930 helpline reference", "safe");
+
+  const bankTxM = clean.match(BANK_TX_RE);
+  const noTxTraps =
+    has_shortener === 0 &&
+    has_apk_lure === 0 &&
+    has_suspicious_tld === 0 &&
+    brand_domain_mismatch === 0 &&
+    upi_collect_cashback_trap === 0;
+  let has_bank_tx_template = bankTxM && BANK_TX_META_RE.test(clean) && noTxTraps ? 1.0 : 0.0;
+  if (has_bank_tx_template && bankTxM) addTrigger(bankTxM[0].slice(0, 40), "Standard bank transaction alert template", "safe");
+
+  const phoneM = clean.match(PHONE_CALLBACK_RE);
+  const isBankDisputeLine = (has_bank_tx_template > 0 || has_tollfree_official > 0) && BANK_DISPUTE_PHONE_RE.test(clean);
+  const has_indian_phone_callback = phoneM && !isBankDisputeLine ? 1.0 : 0.0;
+  if (has_indian_phone_callback && phoneM) addTrigger(phoneM[0].slice(0, 36), "Personal 10-digit mobile callback number", "risk");
 
   let has_currency_amount = 0.0;
   let has_large_amount = 0.0;
@@ -413,15 +430,43 @@ export function extractForensics(norm) {
   if (otpSafeM) addTrigger(otpSafeM[0], "Standard anti-fraud OTP warning", "safe");
   else if (awarenessM && noMaliciousTraps) addTrigger(awarenessM[0], "Public cyber-safety / regulatory awareness advisory", "safe");
 
+  if (asks_otp_or_pin > 0) {
+    has_bank_tx_template = 0.0;
+  }
+
   const dltM = clean.match(DLT_HEADER_RE);
-  const dlt_header = dltM ? dltM[0] : null;
-  const has_dlt_header = dlt_header ? 1.0 : 0.0;
-  const has_dlt_transactional_suffix = DLT_TX_SUFFIX_RE.test(clean) ? 1.0 : 0.0;
+  let dlt_header = dltM ? dltM[0] : null;
+  let has_dlt_header = dlt_header ? 1.0 : 0.0;
+  let has_dlt_transactional_suffix = DLT_TX_SUFFIX_RE.test(clean) ? 1.0 : 0.0;
   if (dlt_header) addTrigger(dlt_header, "TRAI DLT registered sender header", "safe");
 
-  const bankTxM = clean.match(BANK_TX_RE);
-  const has_bank_tx_template = bankTxM && BANK_TX_META_RE.test(clean) ? 1.0 : 0.0;
-  if (has_bank_tx_template && bankTxM) addTrigger(bankTxM[0].slice(0, 40), "Standard bank transaction alert template", "safe");
+  const senderClean = typeof sender === "string" && sender.trim() ? sender.trim() : null;
+  const sender_analysis = { raw: senderClean, type: null, impersonation_risk: false };
+  if (senderClean) {
+    const smDlt = senderClean.match(SENDER_DLT_RE);
+    const smMob = senderClean.match(SENDER_MOBILE_RE);
+    if (smDlt) {
+      dlt_header = senderClean.toUpperCase();
+      has_dlt_header = 1.0;
+      const suffix = (smDlt[1] || "").toUpperCase();
+      const typeMap = { S: "dlt_service", T: "dlt_transactional", G: "dlt_govt", P: "dlt_promo" };
+      sender_analysis.type = typeMap[suffix] || "dlt_service";
+      if (suffix === "T" || suffix === "S" || suffix === "G") {
+        has_dlt_transactional_suffix = 1.0;
+        addTrigger(dlt_header, "Verified TRAI DLT sender ID", "safe");
+      } else if (suffix === "P" && noMaliciousTraps) {
+        addTrigger(dlt_header, "Registered TRAI DLT promotional sender ID", "safe");
+      }
+    } else if (smMob) {
+      sender_analysis.type = "personal_mobile";
+      if (mentionsBrand || kyc_bank_lex_score > 0 || threat_authority_score > 0 || reward_lure_score > 0) {
+        sender_analysis.impersonation_risk = true;
+        addTrigger(senderClean, "Personal mobile sender impersonating institutional brand", "risk");
+      }
+    } else {
+      sender_analysis.type = "unknown";
+    }
+  }
 
   const delivM = canon.match(DELIVERY_ACTION_RE);
   const has_delivery_template =
@@ -496,7 +541,7 @@ export function extractForensics(norm) {
     ),
   };
 
-  return { features, pillars, urls, upi_payloads, dlt_header, triggers: triggers.slice(0, 10) };
+  return { features, pillars, urls, upi_payloads, dlt_header, sender_analysis, triggers: triggers.slice(0, 10) };
 }
 
 function buildVocabMap(vocabArr) {
@@ -617,7 +662,7 @@ function build1930Draft(rawText, category, subType, urls, upiPayloads) {
 
 let cachedMaps = null;
 
-export function analyzeLocal(text, source = "text", modelBundle = null) {
+export function analyzeLocal(text, source = "text", modelBundle = null, sender = null) {
   const bundle = modelBundle || (typeof window !== "undefined" ? window.__SATARK_MODEL__ : null);
   if (!bundle) throw new Error("Satark offline model bundle not loaded.");
   if (!cachedMaps || cachedMaps.bundle !== bundle) {
@@ -630,7 +675,7 @@ export function analyzeLocal(text, source = "text", modelBundle = null) {
 
   const t0 = performance.now();
   const norm = normalizeText(text, true);
-  const fr = extractForensics(norm);
+  const fr = extractForensics(norm, sender);
   const f = fr.features;
 
   const alnumMatches = norm.cleanText.match(/[A-Za-z0-9\u0900-\u0d7f]/g);
@@ -648,7 +693,7 @@ export function analyzeLocal(text, source = "text", modelBundle = null) {
       normalised_text: norm.cleanText,
       obfuscations_detected: norm.obfuscations,
       pillars: fr.pillars,
-      forensics: { urls: fr.urls, upi_payloads: fr.upi_payloads, dlt_header: fr.dlt_header, triggers: fr.triggers },
+      forensics: { urls: fr.urls, upi_payloads: fr.upi_payloads, dlt_header: fr.dlt_header, sender_analysis: fr.sender_analysis, triggers: fr.triggers },
       report_draft_1930: null,
     };
   }
@@ -673,6 +718,9 @@ export function analyzeLocal(text, source = "text", modelBundle = null) {
 
   if ((f[8] > 0 || f[7] > 0 || f[11] > 0 || f[23] > 0) && pScam < 0.65) {
     pScam = Math.max(pScam, 0.78);
+  }
+  if (fr.sender_analysis?.impersonation_risk) {
+    pScam = Math.max(pScam, 0.85);
   }
 
   const verdict = pScam >= bundle.stage_a.threshold ? "SCAM" : "SAFE";
@@ -727,7 +775,7 @@ export function analyzeLocal(text, source = "text", modelBundle = null) {
     normalised_text: norm.cleanText,
     obfuscations_detected: norm.obfuscations,
     pillars: fr.pillars,
-    forensics: { urls: fr.urls, upi_payloads: fr.upi_payloads, dlt_header: fr.dlt_header, triggers: fr.triggers },
+    forensics: { urls: fr.urls, upi_payloads: fr.upi_payloads, dlt_header: fr.dlt_header, sender_analysis: fr.sender_analysis, triggers: fr.triggers },
     report_draft_1930: reportDraft,
   };
 }

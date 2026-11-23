@@ -4,6 +4,8 @@ import { JUDGE_PRESETS } from "../data/presets";
 export function ScannerInput({
   text,
   onChangeText,
+  sender,
+  onChangeSender,
   onScan,
   onMutate,
   onPasteAndScan,
@@ -43,6 +45,27 @@ export function ScannerInput({
             </button>
           )}
         </div>
+      </div>
+
+      <div className="mb-2 flex items-center gap-2">
+        <input
+          type="text"
+          value={sender || ""}
+          onChange={(e) => onChangeSender(e.target.value)}
+          maxLength={64}
+          placeholder="Optional Sender ID (e.g. VM-HDFCBK-S, AX-BLINKT-P, or +919876543210)"
+          className="font-mono-tabular w-full rounded-md border border-[#E4E4E0] bg-[#F7F7F5] px-3 py-1.5 text-xs text-[#111111] placeholder-[#71717A] focus:border-[#111111] focus:bg-white focus:outline-none"
+        />
+        {sender && (
+          <button
+            type="button"
+            onClick={() => onChangeSender("")}
+            aria-label="Clear sender ID"
+            className="shrink-0 rounded-md border border-[#E4E4E0] bg-white px-2.5 py-1.5 text-xs font-medium text-[#52525B] hover:text-[#111111]"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       <textarea

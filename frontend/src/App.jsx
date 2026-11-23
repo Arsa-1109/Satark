@@ -16,6 +16,7 @@ export function App() {
 
   const [activeTab, setActiveTab] = useState("scanner");
   const [text, setText] = useState(JUDGE_PRESETS[0].text);
+  const [sender, setSender] = useState("");
   const [result, setResult] = useState(null);
   const [mutationData, setMutationData] = useState(null);
   const [benchmarks, setBenchmarks] = useState(null);
@@ -25,8 +26,10 @@ export function App() {
   const [error, setError] = useState(null);
 
   const runScan = useCallback(
-    async (inputText, source = "text", modeOverride = null) => {
+    async (inputText, source = "text", modeOverride = null, senderOverride = undefined) => {
       const mode = modeOverride || runtimeMode;
+      const activeSender = senderOverride !== undefined ? senderOverride : sender;
+      const senderVal = activeSender && activeSender.trim() ? activeSender.trim() : null;
       if (!inputText || !inputText.trim()) {
         setError("Please enter or paste a message to scan.");
         return;
@@ -39,7 +42,7 @@ export function App() {
           const resp = await fetch("./api/analyze", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: inputText, source }),
+            body: JSON.stringify({ text: inputText, source, sender: senderVal }),
           });
           if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
@@ -47,12 +50,12 @@ export function App() {
           }
           setResult(await resp.json());
         } else {
-          setResult(analyzeLocal(inputText, source));
+          setResult(analyzeLocal(inputText, source, null, senderVal));
         }
       } catch (e) {
         // Auto-fallback to local PWA JS engine if backend drops
         try {
-          setResult(analyzeLocal(inputText, source));
+          setResult(analyzeLocal(inputText, source, null, senderVal));
           setRuntimeMode("pwa");
           setModelMode("pwa_js");
         } catch (localErr) {
@@ -62,16 +65,19 @@ export function App() {
         setLoading(false);
       }
     },
-    [runtimeMode]
+    [runtimeMode, sender]
   );
 
   // Startup probe (/api/health with 400ms timeout) + Android share_target params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const shared = [params.get("title"), params.get("text"), params.get("url")].filter(Boolean).join(" ").trim();
-    const initialText = shared || JUDGE_PRESETS[0].text;
-    const initialSource = shared ? "share_target" : "text";
+    const sharedText = [params.get("text"), params.get("url")].filter(Boolean).join(" ").trim();
+    const sharedTitle = (params.get("title") || "").trim();
+    const initialText = sharedText || sharedTitle || JUDGE_PRESETS[0].text;
+    const initialSender = sharedText && sharedTitle ? sharedTitle : "";
+    const initialSource = sharedText || sharedTitle ? "share_target" : "text";
     setText(initialText);
+    if (initialSender) setSender(initialSender);
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 400);
@@ -84,14 +90,14 @@ export function App() {
         setModelMode(health.model_mode);
         setClipboardSupported(Boolean(health.clipboard_supported));
         setClipboardEnabled(Boolean(health.clipboard_enabled));
-        runScan(initialText, initialSource, "laptop");
+        runScan(initialText, initialSource, "laptop", initialSender);
         fetch("./api/benchmarks").then((r) => r.json()).then(setBenchmarks).catch(() => {});
       })
       .catch(() => {
         clearTimeout(timer);
         setRuntimeMode("pwa");
         setModelMode("pwa_js");
-        runScan(initialText, initialSource, "pwa");
+        runScan(initialText, initialSource, "pwa", initialSender);
         fetch("./benchmarks_summary.json").then((r) => r.json()).then(setBenchmarks).catch(() => {});
       });
   }, []);
@@ -204,6 +210,8 @@ export function App() {
             <ScannerInput
               text={text}
               onChangeText={setText}
+              sender={sender}
+              onChangeSender={setSender}
               onScan={(t) => runScan(t, "text")}
               onMutate={handleMutate}
               onPasteAndScan={handlePasteAndScan}

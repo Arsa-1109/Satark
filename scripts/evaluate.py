@@ -60,6 +60,7 @@ def evaluate_mode(
     adv_df: pd.DataFrame,
     stress_df: pd.DataFrame,
     ood_df: pd.DataFrame,
+    tx_df: pd.DataFrame,
     force_lite: bool,
 ) -> tuple[dict, list[dict]]:
     # 1. Unseen test
@@ -133,6 +134,14 @@ def evaluate_mode(
             ood_fp += 1
     ood_fpr_pct = (ood_fp / max(len(ood_df), 1)) * 100.0
 
+    # 6. Headerless Transactional & Promotional SAFE Suite (Gate G12)
+    tx_fp = 0
+    for txt in tx_df["text"].astype(str).tolist():
+        res = engine.analyze(txt, force_lite=force_lite)
+        if res["verdict"] == "SCAM":
+            tx_fp += 1
+    tx_fpr_pct = (tx_fp / max(len(tx_df), 1)) * 100.0
+
     median_ms = float(statistics.median(latencies[5:])) if len(latencies) > 10 else float(statistics.median(latencies))
 
     metrics = {
@@ -152,6 +161,9 @@ def evaluate_mode(
         "ood_safe_fpr_pct": round(ood_fpr_pct, 2),
         "ood_safe_fp_count": ood_fp,
         "ood_safe_total": len(ood_df),
+        "transactional_fpr_pct": round(tx_fpr_pct, 2),
+        "transactional_fp_count": tx_fp,
+        "transactional_total": len(tx_df),
     }
     return metrics, curve
 
@@ -163,12 +175,13 @@ def main() -> None:
     adv_df = pd.read_csv(DATA_PROC / "test_adversarial.csv")
     stress_df = pd.read_csv(DATA_PROC / "test_realworld_stress.csv")
     ood_df = pd.read_csv(DATA_PROC / "test_ood_safe.csv")
+    tx_df = pd.read_csv(DATA_PROC / "test_transactional_safe.csv")
 
     engine = SatarkEngine()
     print("Evaluating Full ONNX Hybrid...")
-    full_metrics, full_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, force_lite=False)
+    full_metrics, full_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, force_lite=False)
     print("Evaluating Lite Fallback...")
-    lite_metrics, lite_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, force_lite=True)
+    lite_metrics, lite_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, force_lite=True)
 
     summary = {
         "full_onnx_hybrid": full_metrics,
@@ -182,6 +195,7 @@ def main() -> None:
             "G6_latency_lt_80ms_full_10ms_lite": full_metrics["median_latency_ms"] < 80.0 and lite_metrics["median_latency_ms"] < 10.0,
             "G10_realworld_stress_ge_92pct": full_metrics["realworld_accuracy"] >= 0.92 and full_metrics["realworld_safe_fp"] <= 1,
             "G11_ood_safe_fpr_le_5pct": full_metrics["ood_safe_fpr_pct"] <= 5.0 and lite_metrics["ood_safe_fpr_pct"] <= 5.0,
+            "G12_transactional_promo_fpr_le_4pct": full_metrics["transactional_fpr_pct"] <= 4.0 and lite_metrics["transactional_fpr_pct"] <= 4.0,
         },
         "calibration_curve": full_curve,
     }

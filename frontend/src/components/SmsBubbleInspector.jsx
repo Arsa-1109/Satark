@@ -53,11 +53,18 @@ export function SmsBubbleInspector({ rawText, result }) {
             SMS / WhatsApp Bubble Inspector
           </h2>
         </div>
-        {result.forensics?.dlt_header && (
-          <span className="font-mono-tabular rounded border border-[#047857]/30 bg-[#047857]/5 px-2 py-0.5 text-[11px] font-semibold text-[#047857]">
-            DLT: {result.forensics.dlt_header}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {result.forensics?.sender_analysis?.impersonation_risk && (
+            <span className="font-mono-tabular rounded border border-[#C81E1E]/40 bg-[#C81E1E]/10 px-2 py-0.5 text-[11px] font-semibold text-[#C81E1E]">
+              SPOOFED SENDER: {result.forensics.sender_analysis.raw}
+            </span>
+          )}
+          {result.forensics?.dlt_header && (
+            <span className="font-mono-tabular rounded border border-[#047857]/30 bg-[#047857]/5 px-2 py-0.5 text-[11px] font-semibold text-[#047857]">
+              DLT: {result.forensics.dlt_header}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="rounded-xl rounded-tl-xs border border-[#E4E4E0] bg-[#F7F7F5] p-4 text-sm leading-relaxed text-[#111111]">

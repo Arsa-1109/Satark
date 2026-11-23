@@ -609,6 +609,36 @@ def _generate_hard_negative_safe_corpus() -> list[dict]:
             txt += f" [{i}]"
         rows.append({"text": txt, "label": 0, "category": "", "source_corpus": "hard_neg_lifestyle_promos", "sample_weight": 1.5})
 
+    # 17. Headerless Indian Transactional Bank SMS (260 rows, NO DLT prefix)
+    tx_banks = ["HDFC Bank", "SBI", "ICICI Bank", "Axis Bank", "Kotak Bank", "Bank of Baroda", "PNB", "Canara Bank", "Federal Bank", "IndusInd Bank", "IDFC First Bank"]
+    merchants = ["ZOMATO", "SWIGGY", "AMAZON", "FLIPKART", "BIGBASKET", "UBER", "AIRTEL", "BOOKMYSHOW"]
+    headerless_tx_templates = [
+        "Dear UPI user A/C X{ac} debited by {amt}.0 on date 24Nov26 trf to {merch} Refno {ref}. If not u? call 1800111109. -SBI",
+        "Sent Rs.{amt}.00 From {bank} A/C *{ac} To {merch} On 24/11/26 Ref {ref} Not You? Call 18002586161",
+        "INR {amt}.00 spent using {bank} Card XX{ac} on 24-Nov-26 on {merch}. Avl Limit: INR {bal}.00. If not you, call 18001080 or SMS BLOCK {ac} to 9215676766.",
+        "Rs. {amt}.00 withdrawn from {bank} A/c XXXXX{ac} at ATM BLR042 on 24Nov26. Avl Bal Rs.{bal}.00. Not done by you? Forward this SMS to 9223008333 or call 18001234.",
+        "Your A/c no. XX{ac} is credited with Rs.{amt}.00 on 24-11-26 by NEFT from ACME TECH PVT LTD. Avl Bal Rs.{bal}.00.",
+        "Amt Sent Rs.{amt}.00 From {bank} AC X{ac} to merchant@okicici on 24-11-26. UPI Ref {ref}.",
+        "Alert: You've spent Rs.{amt} on {bank} Credit Card ending {ac} at {merch} on 24-11-2026. Avl Limit: Rs.{bal}.",
+        "Thank you for using your {bank} Debit Card ending {ac} for a purchase worth Rs {amt}.00 at {merch}.",
+        "{bank}: Rs.{amt}.00 auto-debited from your Card XX{ac} for Standing Instruction. Manage at sihub.in",
+        "Your request for NEFT transfer of Rs.{amt}.00 from A/c XX{ac} to Beneficiary has been processed. Ref {ref}.",
+        "Dear Customer, Cheque no. 00{ac} for Rs.{amt}.00 has been cleared from your A/c XX{ac2}. Avl Bal Rs.{bal}.00.",
+        "Transaction of INR {amt}.00 on {bank} Credit Card ending {ac} at {merch} was declined due to insufficient limit.",
+    ]
+    for i in range(260):
+        tpl = headerless_tx_templates[i % len(headerless_tx_templates)]
+        txt = tpl.format(
+            bank=tx_banks[i % len(tx_banks)],
+            merch=merchants[i % len(merchants)],
+            amt=rng.randint(120, 45000),
+            ac=rng.randint(1000, 9999),
+            ac2=rng.randint(1000, 9999),
+            ref=rng.randint(100000000000, 999999999999),
+            bal=rng.randint(5000, 125000),
+        )
+        rows.append({"text": txt, "label": 0, "category": "", "source_corpus": "hard_neg_tx_headerless", "sample_weight": 1.5})
+
     return rows
 
 
@@ -711,6 +741,38 @@ def _build_ood_safe_suite() -> list[dict]:
     return [{"text": t, "label": 0, "category": "", "source_corpus": "ood_safe", "sample_weight": 1.0} for t in ood_msgs]
 
 
+def _build_transactional_promo_suite() -> list[dict]:
+    """Strictly held-out 25-message Headerless Transactional & Promotional SAFE suite (Gate G12)."""
+    msgs = [
+        "Dear UPI user A/C X1234 debited by 450.0 on date 24Nov26 trf to ZOMATO Refno 432918472910. If not u? call 1800111109.",
+        "Sent Rs.250.00 From HDFC Bank A/C *4821 To SWIGGY On 24/11/26 Ref 632819204512 Not You? Call 18002586161",
+        "INR 1,299.00 spent using ICICI Bank Card XX8001 on 24-Nov-26 on AMAZON. Avl Limit: INR 84,200.00. If not you, call 18001080 or SMS BLOCK 8001 to 9215676766.",
+        "Rs. 5,000.00 withdrawn from SBI A/c XXXXX1234 at ATM BLR042 on 24Nov26. Avl Bal Rs.32,140.50. Not done by you? Forward this SMS to 9223008333 or call 18001234.",
+        "Your A/c no. XX7721 is credited with Rs.45,000.00 on 24-11-26 by NEFT from ACME CORP. Avl Bal Rs.58,900.00.",
+        "Amt Sent Rs.120.00 From Kotak Bank AC X4410 to merchant@okicici on 24-11-26. UPI Ref 419283746501.",
+        "An amount of INR 3,200.00 has been DEBITED to your account XXX9081 on 24/11/2026. Total Avl Bal INR 19,450.00.",
+        "Your HDFC Bank A/c XX4821 has an active UPI Mandate for Netflix Rs 199.00 scheduled on 26-Nov-26.",
+        "Update: INR 650.00 debited from Axis Bank A/c no. XX3319 on 24-11-26 at 09:14:22 IST via UPI.",
+        "Alert: You've spent Rs.890 on HDFC Bank Millennia Credit Card ending 4421 at ZOMATO on 24-11-2026.",
+        "849201 is the OTP for your HDFC Bank transaction of INR 2,499.00 at AMAZON PAY. Do not share this OTP with anyone.",
+        "Dear Customer, Your a/c no. XXXXXXXX4120 is debited for Rs.750.00 on 24-11-26 and credited to a/c XX9901.",
+        "Bank of Baroda: Rs.1,500.00 debited from A/c ...4512 on 24-Nov-26 via IMPS. Avl Bal Rs.8,200.00.",
+        "Your ICICI Bank Account XX9012 is debited with INR 299.00 on 24-Nov-26 towards Spotify.",
+        "Transaction of INR 4,999.00 on SBI Credit Card ending 3310 at FLIPKART was declined due to international usage disabled.",
+        "Dear Customer, Rs.12,500.00 has been credited to your A/c XX8812 on 24Nov26 towards salary.",
+        "Thank you for using your SBI Debit Card ending 7721 for a purchase worth Rs 1,100.00 at RELIANCE SMART.",
+        "HDFC Bank: Rs.199.00 auto-debited from your Card XX4421 for Spotify Standing Instruction. Manage at sihub.in",
+        "Your request for NEFT transfer of Rs.10,000.00 from A/c XX4821 to Beneficiary RAHUL has been processed.",
+        "Dear Customer, Cheque no. 000412 for Rs.25,000.00 has been cleared from your A/c XX4821.",
+        "Tata CLiQ: Flat 30% off on winter jackets & sneakers this weekend! Shop on tatacliq.com",
+        "Croma Festive Deals: Up to Rs 5,000 instant bank discount on laptops & TVs at croma.com or nearest store.",
+        "Swiggy Dineout: Book a table tonight and get flat 25% off on your restaurant bill via Swiggy app.",
+        "Puma India: End of Season Sale is live! Extra 15% off on running shoes at in.puma.com",
+        "MakeMyTrip: Flat Rs 1,200 off on domestic round-trip flights with HDFC Credit Cards. Book on makemytrip.com",
+    ]
+    return [{"text": t, "label": 0, "category": "", "source_corpus": "transactional_promo_safe", "sample_weight": 1.0} for t in msgs]
+
+
 def main() -> None:
     PROC_DIR.mkdir(parents=True, exist_ok=True)
     uci_rows = _download_uci()
@@ -719,9 +781,10 @@ def main() -> None:
     safe_hn_rows = _generate_hard_negative_safe_corpus()
     stress_rows = _build_realworld_stress_suite()
     ood_rows = _build_ood_safe_suite()
+    tx_promo_rows = _build_transactional_promo_suite()
 
-    # Anti-leakage: exclude samples.txt, test_realworld_stress.csv, and test_ood_safe.csv
-    excluded_keys = {_dedup_key(r["text"]) for r in stress_rows + ood_rows}
+    # Anti-leakage: exclude samples.txt, test_realworld_stress.csv, test_ood_safe.csv, and test_transactional_safe.csv
+    excluded_keys = {_dedup_key(r["text"]) for r in stress_rows + ood_rows + tx_promo_rows}
     samples_path = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\samples.txt")
     if samples_path.exists():
         for m in samples_path.read_text(encoding="utf-8").split("\n\n"):
@@ -770,6 +833,7 @@ def main() -> None:
 
     stress_df = pd.DataFrame(stress_rows)
     ood_df = pd.DataFrame(ood_rows)
+    tx_df = pd.DataFrame(tx_promo_rows)
 
     train_df.to_csv(PROC_DIR / "train.csv", index=False)
     val_df.to_csv(PROC_DIR / "val.csv", index=False)
@@ -778,6 +842,7 @@ def main() -> None:
     adv_sample.to_csv(PROC_DIR / "test_adversarial.csv", index=False)
     stress_df.to_csv(PROC_DIR / "test_realworld_stress.csv", index=False)
     ood_df.to_csv(PROC_DIR / "test_ood_safe.csv", index=False)
+    tx_df.to_csv(PROC_DIR / "test_transactional_safe.csv", index=False)
 
     print("Saved splits to", PROC_DIR)
     for name, part in (
@@ -788,6 +853,7 @@ def main() -> None:
         ("test_adversarial.csv", adv_sample),
         ("test_realworld_stress.csv", stress_df),
         ("test_ood_safe.csv", ood_df),
+        ("test_transactional_safe.csv", tx_df),
     ):
         print(f"  {name:26s}: {len(part):5d} rows (scam={int((part['label']==1).sum())}, safe={int((part['label']==0).sum())})")
 
