@@ -58,6 +58,8 @@ def evaluate_mode(
     unseen_df: pd.DataFrame,
     hn_df: pd.DataFrame,
     adv_df: pd.DataFrame,
+    stress_df: pd.DataFrame,
+    ood_df: pd.DataFrame,
     force_lite: bool,
 ) -> tuple[dict, list[dict]]:
     # 1. Unseen test
@@ -107,6 +109,30 @@ def evaluate_mode(
             adv_tp += 1
     adv_recall = adv_tp / max(len(adv_df), 1)
 
+    # 4. Held-out Real-World Stress Suite (Gate G10)
+    rw_correct = 0
+    rw_safe_fp = 0
+    rw_scam_fn = 0
+    for _, row in stress_df.iterrows():
+        res = engine.analyze(str(row["text"]), force_lite=force_lite)
+        pred = 1 if res["verdict"] == "SCAM" else 0
+        lbl = int(row["label"])
+        if pred == lbl:
+            rw_correct += 1
+        elif lbl == 0 and pred == 1:
+            rw_safe_fp += 1
+        elif lbl == 1 and pred == 0:
+            rw_scam_fn += 1
+    rw_acc = rw_correct / max(len(stress_df), 1)
+
+    # 5. Strictly Blind OOD SAFE Suite (Gate G11)
+    ood_fp = 0
+    for txt in ood_df["text"].astype(str).tolist():
+        res = engine.analyze(txt, force_lite=force_lite)
+        if res["verdict"] == "SCAM":
+            ood_fp += 1
+    ood_fpr_pct = (ood_fp / max(len(ood_df), 1)) * 100.0
+
     median_ms = float(statistics.median(latencies[5:])) if len(latencies) > 10 else float(statistics.median(latencies))
 
     metrics = {
@@ -119,6 +145,13 @@ def evaluate_mode(
         "ece": round(ece, 4),
         "brier_score": round(brier, 4),
         "median_latency_ms": round(median_ms, 2),
+        "realworld_accuracy": round(rw_acc, 4),
+        "realworld_safe_fp": rw_safe_fp,
+        "realworld_scam_fn": rw_scam_fn,
+        "realworld_total": len(stress_df),
+        "ood_safe_fpr_pct": round(ood_fpr_pct, 2),
+        "ood_safe_fp_count": ood_fp,
+        "ood_safe_total": len(ood_df),
     }
     return metrics, curve
 
@@ -128,12 +161,14 @@ def main() -> None:
     unseen_df = pd.read_csv(DATA_PROC / "test_unseen.csv")
     hn_df = pd.read_csv(DATA_PROC / "test_hard_negatives.csv")
     adv_df = pd.read_csv(DATA_PROC / "test_adversarial.csv")
+    stress_df = pd.read_csv(DATA_PROC / "test_realworld_stress.csv")
+    ood_df = pd.read_csv(DATA_PROC / "test_ood_safe.csv")
 
     engine = SatarkEngine()
     print("Evaluating Full ONNX Hybrid...")
-    full_metrics, full_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, force_lite=False)
+    full_metrics, full_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, force_lite=False)
     print("Evaluating Lite Fallback...")
-    lite_metrics, lite_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, force_lite=True)
+    lite_metrics, lite_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, force_lite=True)
 
     summary = {
         "full_onnx_hybrid": full_metrics,
@@ -145,6 +180,8 @@ def main() -> None:
             "G4_adv_recall_ge_0.90": full_metrics["adversarial_recall"] >= 0.90,
             "G5_ece_le_0.06_brier_le_0.08": full_metrics["ece"] <= 0.06 and full_metrics["brier_score"] <= 0.08,
             "G6_latency_lt_80ms_full_10ms_lite": full_metrics["median_latency_ms"] < 80.0 and lite_metrics["median_latency_ms"] < 10.0,
+            "G10_realworld_stress_ge_92pct": full_metrics["realworld_accuracy"] >= 0.92 and full_metrics["realworld_safe_fp"] <= 1,
+            "G11_ood_safe_fpr_le_5pct": full_metrics["ood_safe_fpr_pct"] <= 5.0 and lite_metrics["ood_safe_fpr_pct"] <= 5.0,
         },
         "calibration_curve": full_curve,
     }
@@ -160,8 +197,16 @@ def main() -> None:
     print(json.dumps(full_metrics, indent=2))
     print("\n=== LITE FALLBACK METRICS ===")
     print(json.dumps(lite_metrics, indent=2))
-    print("\n=== GATES G1-G6 ===")
+    print("\n=== GATES G1-G11 ===")
     print(json.dumps(summary["gates"], indent=2))
+
+    samples_path = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\samples.txt")
+    if samples_path.exists():
+        print("\n=== USER SAMPLES.TXT AUDIT ===")
+        for idx, msg in enumerate([m.strip() for m in samples_path.read_text(encoding="utf-8").split("\n\n") if m.strip()], 1):
+            rf = engine.analyze(msg, force_lite=False)
+            rl = engine.analyze(msg, force_lite=True)
+            print(f"  Sample {idx}: Full={rf['verdict']} (p={rf['scam_probability']}) | Lite={rl['verdict']} (p={rl['scam_probability']}) | {msg[:75]}...")
 
     if not all(summary["gates"].values()):
         sys.exit(1)
