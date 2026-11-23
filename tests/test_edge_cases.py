@@ -78,6 +78,26 @@ def test_benign_retail_promo_sms_safe() -> None:
     assert engine.analyze(festive_scam)["verdict"] == "SCAM"
 
 
+def test_realworld_service_and_subtle_scams() -> None:
+    safe_samples = [
+        "Dear Customer, your Jio plan of Rs 299 is expiring in 3 days. Recharge now on MyJio app or jio.com to enjoy uninterrupted services.",
+        "Airtel: You have used 90% of your daily 1.5GB data quota. Buy a data pack on Airtel Thanks app.",
+        "Zomato: Craving biryani tonight? Get 50% OFF up to Rs 120 using code TRYNEW. Order now on Zomato app!",
+        "ICICI Bank: Your credit card bill of Rs 12,450 is due on 28 Nov 2026. Pay via iMobile app to avoid late fees.",
+        "Uber: Your ride with Ramesh (KA01AB1234) is arriving in 3 mins. Share PIN 4829 with driver to start trip.",
+        "Can you please share the OTP for the Amazon delivery? The delivery boy is at the gate.",
+    ]
+    scam_samples = [
+        "Bro quick favor, my UPI is not working, can you send Rs 8000 to my friend 9811223344@paytm right now? Will return in 1 hour pakka.",
+        "Sir I accidentally transferred Rs 15000 to your Google Pay instead of my brother. Please refund Rs 15000 urgently to 9876543210@ybl, my mother is in hospital.",
+        "Hi, I am Priya from Amazon HR. We are hiring part-time reviewers, earn 2000-5000 daily from home. Reply YES for details.",
+    ]
+    for s in safe_samples:
+        assert engine.analyze(s)["verdict"] == "SAFE", f"Expected SAFE for: {s}"
+    for s in scam_samples:
+        assert engine.analyze(s)["verdict"] == "SCAM", f"Expected SCAM for: {s}"
+
+
 def test_gate_g9_packaging_and_zero_cdn() -> None:
     summary_path = ROOT / "models" / "lite" / "benchmarks_summary.json"
     assert summary_path.exists(), "models/lite/benchmarks_summary.json missing"

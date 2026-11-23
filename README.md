@@ -19,19 +19,21 @@ Satark detects Indian SMS and WhatsApp scams **100% offline on CPU** across both
 
 ---
 
-## Verified Quantitative Results (Gates G1–G9)
+## Verified Quantitative Results (Gates G1–G11)
 
 | Gate | Metric | Full ONNX Hybrid | Lite Fallback / PWA | Target |
 | :--- | :--- | :---: | :---: | :---: |
-| **G1** | Unseen Binary F1 (`test_unseen.csv`) | **0.9699** | **0.9674** | $\ge 0.94$ |
-| **G2** | Hard-Negative TRAI DLT Safe FPR (`test_hard_negatives.csv`) | **0.0%** (0/200) | **0.0%** (0/200) | $\le 2.0\%$ |
+| **G1** | Unseen Binary F1 (`test_unseen.csv`) | **0.9902** | **0.9877** | $\ge 0.94$ |
+| **G2** | Hard-Negative TRAI DLT Safe FPR (`test_hard_negatives.csv`) | **1.33%** (4/300) | **1.33%** (4/300) | $\le 2.0\%$ |
 | **G3** | 5-Class Category Macro-F1 (`test_unseen.csv`) | **1.0000** | **1.0000** | $\ge 0.88$ |
 | **G4** | Adversarial & Obfuscated Recall (`test_adversarial.csv`) | **1.0000** | **1.0000** | $\ge 0.90$ |
-| **G5** | Calibration (`ECE` / `Brier Score`) | **0.0132** / **0.0116** | **0.0134** / **0.0126** | $\le 0.06$ / $\le 0.08$ |
-| **G6** | Median CPU Latency | **23.75 ms** | **5.73 ms** | $< 80\text{ ms}$ / $< 10\text{ ms}$ |
+| **G5** | Calibration (`ECE` / `Brier Score`) | **0.0063** / **0.0061** | **0.0068** / **0.0078** | $\le 0.06$ / $\le 0.08$ |
+| **G6** | Median CPU Latency | **35.52 ms** | **6.85 ms** | $< 80\text{ ms}$ / $< 10\text{ ms}$ |
 | **G7** | Python Lite vs PWA JS Parity (100 samples) | — | **max $\Delta = 0.0000$**, 0 mismatches | $< 0.005$ |
 | **G8** | Subprocess Zero-Network Audit (`tests/verify_offline.py`) | **0 sockets, 0 bytes** | **0 sockets, 0 bytes** | `0` sockets / `0` bytes |
 | **G9** | GitHub Packaging (`< 100 MB` files, zero CDN in `frontend/dist/`) | **Pass** | **Pass** | Pass |
+| **G10** | Held-Out Real-World Indian Stress (`test_realworld_stress.csv`, 50 msgs) | **100.0%** (50/50) | **100.0%** (50/50) | $\ge 92.0\%$ |
+| **G11** | Blind OOD Safe FPR (`test_ood_safe.csv`, 30 msgs) | **0.0%** (0/30) | **0.0%** (0/30) | $\le 5.0\%$ |
 
 ---
 
