@@ -14,8 +14,8 @@ export const UI_COPY = {
     warnFamilyBtn: "Warn Family",
     copiedWarning: "Warning Copied",
     exampleHeading: "Try an example",
-    emptyTitle: "Check any SMS, WhatsApp forward, or payment link",
-    emptySubtitle: "Paste a message below — 100% private and analyzed offline on your device.",
+    emptyTitle: "Check an SMS or WhatsApp message",
+    emptySubtitle: "100% private · Runs offline on your device",
   },
   hi: {
     scamHeadline: "Khatra: Yeh Scam Lag Raha Hai — Koi Action Na Lein",
@@ -27,8 +27,8 @@ export const UI_COPY = {
     warnFamilyBtn: "Family ko Alert Karein",
     copiedWarning: "Alert Copy Ho Gaya",
     exampleHeading: "Example try karein",
-    emptyTitle: "Koi bhi SMS, WhatsApp message ya payment link check karein",
-    emptySubtitle: "Neeche message paste karein — 100% offline aur private, sirf aapke device par.",
+    emptyTitle: "SMS ya WhatsApp message check karein",
+    emptySubtitle: "100% private · Bina internet aapke phone par",
   },
 };
 

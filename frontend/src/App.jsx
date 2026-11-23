@@ -262,7 +262,8 @@ export function App() {
         setCollapsedForShare(false);
         runScan(clip, "clipboard");
       } else {
-        setError("Clipboard is empty.");
+        setError("Clipboard is empty — copy a message first, then tap Paste & Scan.");
+        setTimeout(() => setError((prev) => (prev && /clipboard is empty/i.test(prev) ? null : prev)), 4000);
       }
     } catch {
       const isTouch = typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
@@ -360,7 +361,7 @@ export function App() {
         onToggleLang={() => setLang((l) => (l === "en" ? "hi" : "en"))}
       />
 
-      <main className="mx-auto max-w-5xl space-y-4 px-4 py-5 sm:px-6">
+      <main className="mx-auto max-w-5xl space-y-3.5 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-5">
         <PwaInstallBanner />
 
         {clipboardBanner && (

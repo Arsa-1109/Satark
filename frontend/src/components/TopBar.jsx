@@ -24,8 +24,8 @@ export function TopBar({
       : "Lite Fallback";
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[#E4E4E0] bg-[#F7F7F5]/95 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-4 py-2.5 sm:px-6">
+    <header className="sticky top-0 z-20 border-b border-[#E4E4E0] bg-[#F7F7F5]/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
+      <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-3 py-2 sm:px-6 sm:py-2.5">
         <div className="flex items-center gap-2.5">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#111111] text-[#F7F7F5]">
             <Shield className="size-4" />
@@ -50,7 +50,7 @@ export function TopBar({
             type="button"
             onClick={onToggleLang}
             aria-label="Toggle English or Hinglish guidance"
-            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md border border-[#E4E4E0] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#111111] transition-colors duration-150 hover:bg-[#EFEFEC] sm:min-h-[34px]"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E4E4E0] bg-white px-2.5 text-xs font-semibold text-[#111111] transition-colors duration-150 hover:bg-[#EFEFEC]"
           >
             <Languages className="size-3.5 text-[#52525B]" />
             <span>{lang === "hi" ? "Hinglish" : "EN"}</span>
@@ -62,7 +62,7 @@ export function TopBar({
               onClick={onToggleClipboard}
               aria-pressed={clipboardEnabled}
               className={cn(
-                "inline-flex min-h-[44px] items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors duration-150 sm:min-h-[34px]",
+                "inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors duration-150",
                 clipboardEnabled
                   ? "border-[#047857] bg-[#047857]/10 text-[#047857]"
                   : "border-[#E4E4E0] bg-white text-[#52525B] hover:text-[#111111]"
@@ -83,7 +83,7 @@ export function TopBar({
             onClick={onToggleLabMode}
             aria-pressed={labMode}
             className={cn(
-              "inline-flex min-h-[44px] items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors duration-150 sm:min-h-[34px]",
+              "inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors duration-150",
               labMode
                 ? "border-[#111111] bg-[#111111] text-white"
                 : "border-[#E4E4E0] bg-white text-[#52525B] hover:text-[#111111]"
