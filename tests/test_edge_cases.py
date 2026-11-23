@@ -136,6 +136,42 @@ def test_official_link_notification_trusted_guard() -> None:
     assert engine.analyze(mixed_links)["verdict"] == "SCAM"
 
 
+def test_high_confidence_safe_not_marked_borderline() -> None:
+    qmin_promo = (
+        "✨ Weekend Magic, Delivered Home✨ Order Weekend Indulgence on the Qmin App. "
+        "A feast of flavours and a touch of indulgence - explore Qmin's weekend special menu, "
+        "filled with delicious delicacies perfect for gathering with friends and family, "
+        "whether for a leisurely afternoon or a fun-filled evening. 😍 Don't forget to redeem "
+        "your Tata NeuCoins when placing your order! 📲 Download the Qmin App or call 1800 202 8282 to order."
+    )
+    res = engine.analyze(qmin_promo)
+    assert res["verdict"] == "SAFE"
+    assert res["certainty_tier"] == "High Certainty"
+    assert res["scam_probability"] < 0.15
+
+
+def test_commercial_ads_safe_vs_scam_shortlinks() -> None:
+    kfc_ad = "Today only! Double your KFC bucket. Buy 6 pcs Hot n Crispy and get 6 pcs Strips... FREE! Don't miss this... grab now! bit.ly/kfcind-dsg19 TnC"
+    for snd in ("AD-KFCIND-P", None):
+        res_kfc = engine.analyze(kfc_ad, sender=snd)
+        assert res_kfc["verdict"] == "SAFE"
+        assert res_kfc["obfuscations_detected"] == []
+        assert "bit.ly/kfcind-dsg19" in res_kfc["normalised_text"]
+
+    dom_ad = "Craving pizza? Get Flat 50% OFF on your Domino's order up to Rs 120! Use code DOM50. Valid today only! Order now: bit.ly/dom50off T&C apply"
+    res_dom = engine.analyze(dom_ad, sender="VM-DOMINO-P")
+    assert res_dom["verdict"] == "SAFE"
+    assert res_dom["obfuscations_detected"] == []
+
+    bk_ad = "Flat 40% OFF on all Burgers & Fries at Burger King! Buy 1 Whopper get 1 FREE. Valid today only at participating outlets. TnC apply"
+    assert engine.analyze(bk_ad)["verdict"] == "SAFE"
+
+    # Shortened-URL scams must STILL be caught even with -P sender spoofing
+    assert engine.analyze("Dear customer, your SBI YONO account will be blocked today. Update KYC at bit.ly/sbi-kyc immediately.")["verdict"] == "SCAM"
+    assert engine.analyze("CONGRATULATIONS! You won Rs 25 Lakh in KBC Lucky Draw! Claim at bit.ly/kbc-win25")["verdict"] == "SCAM"
+    assert engine.analyze("Your SBI account is suspended today! Verify KYC at bit.ly/sbi-kyc", sender="AD-SBIBNK-P")["verdict"] == "SCAM"
+
+
 def test_gate_g9_packaging_and_zero_cdn() -> None:
     summary_path = ROOT / "models" / "lite" / "benchmarks_summary.json"
     assert summary_path.exists(), "models/lite/benchmarks_summary.json missing"

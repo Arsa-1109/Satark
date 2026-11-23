@@ -54,7 +54,7 @@ _LEET_MAP: dict[str, str] = {
 }
 
 _PURE_CODE_RE = re.compile(
-    r"^(?:xx+\d+|\*+\d+|rs\.?\d+|\d+[a-z]{0,2}|[a-z]{1,3}\d{3,}|v\d+(?:\.\d+)*)$",
+    r"^(?:xx+\d+|\*+\d+|rs\.?\d+|\d{1,4}[a-z]{1,4}|[a-z]{2,}\d{1,5}|[a-z]{1,3}\d{3,}|v\d+(?:\.\d+)*)$",
     re.IGNORECASE,
 )
 
@@ -147,7 +147,14 @@ def normalize_text(text: str, *, validate: bool = True) -> NormalizedResult:
 
     # Step 6: Token-level leetspeak decode (preserve URLs/emails by skipping tokens inside URLs)
     had_leet = False
-    url_spans = [(m.start(), m.end()) for m in re.finditer(r"(?:https?://|upi://|www\.)\S+", working, re.IGNORECASE)]
+    url_spans = [
+        (m.start(), m.end())
+        for m in re.finditer(
+            r"(?:https?://|upi://|www\.)\S+|\b[a-z0-9][a-z0-9\-]*(?:\.[a-z0-9\-]+)*\.[a-z]{2,}/\S+",
+            working,
+            re.IGNORECASE,
+        )
+    ]
 
     def _in_url(idx: int) -> bool:
         return any(s <= idx < e for s, e in url_spans)

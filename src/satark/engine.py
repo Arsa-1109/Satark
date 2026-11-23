@@ -59,6 +59,7 @@ def _forensic_risk_score(f: list[float]) -> float:
     )
     safe = (
         f[6] * 0.30   # has_official_domain
+        + f[14] * 0.15 # has_tollfree_official
         + f[24] * 0.35 # has_otp_do_not_share
         + f[26] * 0.15 # has_dlt_transactional_suffix
         + f[27] * 0.30 # has_bank_tx_template
@@ -245,7 +246,7 @@ class SatarkEngine:
             and f[23] == 0
             and not forensics.sender_analysis.get("impersonation_risk")
         ):
-            p_scam = min(p_scam, 0.30)
+            p_scam = min(p_scam, 0.15)
 
         threshold = float((self.stage_a_full if use_full else self.stage_a_lite).get("threshold", 0.5))
         verdict = "SCAM" if p_scam >= threshold else "SAFE"
@@ -253,8 +254,14 @@ class SatarkEngine:
 
         # Dual-View Borderline Band
         p_for = _forensic_risk_score(f)
-        if (0.38 <= p_scam <= 0.68) or (abs(p_scam - p_for) >= 0.45 and p_scam < 0.85):
+        ml_uncertain = 0.38 <= p_scam <= 0.68
+        forensic_flag_on_safe = p_scam < 0.38 and p_for >= 0.65
+        safe_counter_on_scam = 0.50 <= p_scam < 0.85 and p_for <= 0.25
+        if ml_uncertain or forensic_flag_on_safe or safe_counter_on_scam:
             certainty_tier = "Borderline — Verify Manually"
+            if not ml_uncertain:
+                disagreement_cap = round(max(50.0, 100.0 - abs(p_scam - p_for) * 65.0), 1)
+                confidence_pct = min(confidence_pct, disagreement_cap)
         elif confidence_pct < 82.0:
             certainty_tier = "Moderate"
         else:

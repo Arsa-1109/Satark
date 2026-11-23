@@ -41,6 +41,15 @@ export function VerdictHero({ result, verdictRef, lang = "en", labMode = false, 
   const summary = buildHumanSummary(result, lang);
   const checklist = getSafetyChecklist(result, lang);
 
+  const displayPct = isBorderline
+    ? Math.min(100, Math.max(0, result.scam_probability * 100))
+    : Math.min(100, Math.max(0, result.confidence_pct));
+  const metricLabel = isBorderline
+    ? copy.borderlineRiskLabel
+    : isScam
+    ? copy.scamConfidenceLabel
+    : copy.safeConfidenceLabel;
+
   const handleWarnFamily = async () => {
     const msg = buildFamilyWarningText(result, lang);
     if (navigator.share) {
@@ -114,8 +123,11 @@ export function VerdictHero({ result, verdictRef, lang = "en", labMode = false, 
           </div>
 
           <div className="text-right">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#52525B]">
+              {metricLabel}
+            </div>
             <div className="font-mono-tabular text-2xl font-extrabold text-[#111111]">
-              {result.confidence_pct.toFixed(1)}%
+              {displayPct.toFixed(1)}%
             </div>
             <div className="font-mono-tabular mt-0.5 inline-flex items-center gap-1 text-[11px] text-[#52525B]">
               <Clock className="size-3" />
@@ -127,7 +139,7 @@ export function VerdictHero({ result, verdictRef, lang = "en", labMode = false, 
         <div className="mt-3.5 h-2 w-full overflow-hidden rounded-full bg-white/80">
           <div
             className={cn("h-full transition-transform duration-200 ease-out", barClass)}
-            style={{ width: `${Math.min(100, Math.max(0, result.confidence_pct))}%` }}
+            style={{ width: `${displayPct}%` }}
           />
         </div>
       </div>

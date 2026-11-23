@@ -105,7 +105,9 @@ THREAT_AUTH_LEX = (
 
 REWARD_LEX = (
     "congratulations", "winner", "lottery", "kbc", "lucky draw", "jackpot",
-    "prize", "won", "cashback", "free", "bonus", "spin", "jeeta", "inam", "gift",
+    "prize", "won", "cashback", "free iphone", "free gift", "free cash",
+    "free recharge", "free bonus", "free money", "free prize", "claim free",
+    "win free", "bonus", "spin", "jeeta", "inam", "gift",
 )
 
 KYC_BANK_LEX = (
@@ -432,6 +434,25 @@ def extract_forensics(norm: NormalizedResult, sender: str | None = None) -> Fore
     if dlt_header:
         add_trigger(dlt_header, "TRAI DLT registered sender header", "safe")
 
+    no_serious_promo_traps = (
+        has_apk_lure == 0.0
+        and has_suspicious_tld == 0.0
+        and has_raw_ip_url == 0.0
+        and has_punycode_url == 0.0
+        and brand_domain_mismatch == 0.0
+        and has_remote_access_app == 0.0
+        and has_upi_uri == 0.0
+        and upi_collect_cashback_trap == 0.0
+        and has_wa_tg == 0.0
+        and has_indian_phone_callback == 0.0
+        and asks_otp_or_pin == 0.0
+        and threat_authority_score == 0.0
+        and kyc_bank_lex_score == 0.0
+        and loan_credit_lex_score == 0.0
+        and job_invest_lex_score == 0.0
+        and has_large_amount == 0.0
+    )
+
     sender_clean = sender.strip() if isinstance(sender, str) and sender.strip() else None
     sender_analysis: dict[str, object] = {"raw": sender_clean, "type": None, "impersonation_risk": False}
     if sender_clean:
@@ -446,7 +467,7 @@ def extract_forensics(norm: NormalizedResult, sender: str | None = None) -> Fore
             if suffix in ("T", "S", "G"):
                 has_dlt_transactional_suffix = 1.0
                 add_trigger(dlt_header, "Verified TRAI DLT sender ID", "safe")
-            elif suffix == "P" and no_malicious_traps:
+            elif suffix == "P" and no_serious_promo_traps:
                 add_trigger(dlt_header, "Registered TRAI DLT promotional sender ID", "safe")
         elif sm_mob:
             sender_analysis["type"] = "personal_mobile"
@@ -558,7 +579,8 @@ def extract_forensics(norm: NormalizedResult, sender: str | None = None) -> Fore
                 + has_bank_tx_template * 0.30
                 + has_delivery_template * 0.25
                 + has_casual_hinglish_chat * 0.25
-                + has_tollfree_official * 0.15,
+                + has_tollfree_official * 0.15
+                + (0.20 if (sender_analysis.get("type") == "dlt_promo" and no_serious_promo_traps) else 0.0),
             ),
             3,
         ),

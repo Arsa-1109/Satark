@@ -33,9 +33,9 @@ const CONFUSABLES = {
 
 const SPACED_PART_RE = /\b([a-zA-Z](?:[.\-_\s]{1,2}[a-zA-Z]){2,7})\b/g;
 const LEET_MAP = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s" };
-const PURE_CODE_RE = /^(?:xx+\d+|\*+\d+|rs\.?\d+|\d+[a-z]{0,2}|[a-z]{1,3}\d{3,}|v\d+(?:\.\d+)*)$/i;
+const PURE_CODE_RE = /^(?:xx+\d+|\*+\d+|rs\.?\d+|\d{1,4}[a-z]{1,4}|[a-z]{2,}\d{1,5}|[a-z]{1,3}\d{3,}|v\d+(?:\.\d+)*)$/i;
 const TOKEN_RE = /[A-Za-z0-9@$]+/g;
-const URL_SPAN_RE = /(?:https?:\/\/|upi:\/\/|www\.)\S+/gi;
+const URL_SPAN_RE = /(?:https?:\/\/|upi:\/\/|www\.)\S+|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}\/\S+/gi;
 
 const HINGLISH_MAP = [
   [/\b(?:paise|pese|paisaa)\b/gi, "paisa"],
@@ -186,7 +186,9 @@ const THREAT_AUTH_LEX = [
 ];
 const REWARD_LEX = [
   "congratulations", "winner", "lottery", "kbc", "lucky draw", "jackpot",
-  "prize", "won", "cashback", "free", "bonus", "spin", "jeeta", "inam", "gift",
+  "prize", "won", "cashback", "free iphone", "free gift", "free cash",
+  "free recharge", "free bonus", "free money", "free prize", "claim free",
+  "win free", "bonus", "spin", "jeeta", "inam", "gift",
 ];
 const KYC_BANK_LEX = [
   "kyc", "pan", "aadhaar", "yono", "netbanking", "fastag", "cvv", "atm",
@@ -444,6 +446,24 @@ export function extractForensics(norm, sender = null) {
   let has_dlt_transactional_suffix = DLT_TX_SUFFIX_RE.test(clean) ? 1.0 : 0.0;
   if (dlt_header) addTrigger(dlt_header, "TRAI DLT registered sender header", "safe");
 
+  const noSeriousPromoTraps =
+    has_apk_lure === 0 &&
+    has_suspicious_tld === 0 &&
+    has_raw_ip_url === 0 &&
+    has_punycode_url === 0 &&
+    brand_domain_mismatch === 0 &&
+    has_remote_access_app === 0 &&
+    has_upi_uri === 0 &&
+    upi_collect_cashback_trap === 0 &&
+    has_wa_tg === 0 &&
+    has_indian_phone_callback === 0 &&
+    asks_otp_or_pin === 0 &&
+    threat_authority_score === 0 &&
+    kyc_bank_lex_score === 0 &&
+    loan_credit_lex_score === 0 &&
+    job_invest_lex_score === 0 &&
+    has_large_amount === 0;
+
   const senderClean = typeof sender === "string" && sender.trim() ? sender.trim() : null;
   const sender_analysis = { raw: senderClean, type: null, impersonation_risk: false };
   if (senderClean) {
@@ -458,7 +478,7 @@ export function extractForensics(norm, sender = null) {
       if (suffix === "T" || suffix === "S" || suffix === "G") {
         has_dlt_transactional_suffix = 1.0;
         addTrigger(dlt_header, "Verified TRAI DLT sender ID", "safe");
-      } else if (suffix === "P" && noMaliciousTraps) {
+      } else if (suffix === "P" && noSeriousPromoTraps) {
         addTrigger(dlt_header, "Registered TRAI DLT promotional sender ID", "safe");
       }
     } else if (smMob) {
@@ -540,7 +560,8 @@ export function extractForensics(norm, sender = null) {
       Math.min(
         1.0,
         has_official_domain * 0.35 + has_dlt_transactional_suffix * 0.25 + has_otp_do_not_share * 0.3 +
-          has_bank_tx_template * 0.3 + has_delivery_template * 0.25 + has_casual_hinglish_chat * 0.25 + has_tollfree_official * 0.15
+          has_bank_tx_template * 0.3 + has_delivery_template * 0.25 + has_casual_hinglish_chat * 0.25 + has_tollfree_official * 0.15 +
+          (sender_analysis.type === "dlt_promo" && noSeriousPromoTraps ? 0.2 : 0.0)
       )
     ),
   };
@@ -619,7 +640,7 @@ function forensicRiskScore(f) {
     f[8] * 0.45 + f[9] * 0.4 + f[10] * 0.25 + f[11] * 0.35 + f[12] * 0.15 +
     f[17] * 0.25 + f[18] * 0.25 + f[19] * 0.25 + f[23] * 0.4 + f[30] * 0.2;
   const safe =
-    f[6] * 0.3 + f[24] * 0.35 + f[26] * 0.15 + f[27] * 0.3 + f[28] * 0.25 + f[29] * 0.25;
+    f[6] * 0.3 + f[14] * 0.15 + f[24] * 0.35 + f[26] * 0.15 + f[27] * 0.3 + f[28] * 0.25 + f[29] * 0.25;
   return Math.max(0.0, Math.min(1.0, 0.5 + (risk - safe)));
 }
 
@@ -741,16 +762,23 @@ export function analyzeLocal(text, source = "text", modelBundle = null, sender =
     f[23] === 0 &&
     !fr.sender_analysis?.impersonation_risk
   ) {
-    pScam = Math.min(pScam, 0.30);
+    pScam = Math.min(pScam, 0.15);
   }
 
   const verdict = pScam >= bundle.stage_a.threshold ? "SCAM" : "SAFE";
-  const confidencePct = Math.round(Math.max(pScam, 1.0 - pScam) * 1000) / 10;
+  let confidencePct = Math.round(Math.max(pScam, 1.0 - pScam) * 1000) / 10;
 
   const pFor = forensicRiskScore(f);
   let certaintyTier = "High Certainty";
-  if ((pScam >= 0.38 && pScam <= 0.68) || (Math.abs(pScam - pFor) >= 0.45 && pScam < 0.85)) {
+  const mlUncertain = pScam >= 0.38 && pScam <= 0.68;
+  const forensicFlagOnSafe = pScam < 0.38 && pFor >= 0.65;
+  const safeCounterOnScam = pScam >= 0.50 && pScam < 0.85 && pFor <= 0.25;
+  if (mlUncertain || forensicFlagOnSafe || safeCounterOnScam) {
     certaintyTier = "Borderline — Verify Manually";
+    if (!mlUncertain) {
+      const disagreementCap = Math.round(Math.max(50.0, 100.0 - Math.abs(pScam - pFor) * 65.0) * 10) / 10;
+      confidencePct = Math.min(confidencePct, disagreementCap);
+    }
   } else if (confidencePct < 82.0) {
     certaintyTier = "Moderate";
   }

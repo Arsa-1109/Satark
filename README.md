@@ -19,23 +19,24 @@ Satark detects Indian SMS and WhatsApp scams **100% offline on CPU** across both
 
 ---
 
-## Verified Quantitative Results (Gates G1–G13)
+## Verified Quantitative Results (Gates G1–G14)
 
 | Gate | Metric | Full ONNX Hybrid | Lite Fallback / PWA | Target |
 | :--- | :--- | :---: | :---: | :---: |
-| **G1** | Unseen Binary F1 (`test_unseen.csv`) | **0.9821** | **0.9783** | $\ge 0.94$ |
+| **G1** | Unseen Binary F1 (`test_unseen.csv`) | **0.9755** | **0.9654** | $\ge 0.94$ |
 | **G2** | Hard-Negative TRAI DLT Safe FPR (`test_hard_negatives.csv`) | **0.0%** (0/300) | **0.0%** (0/300) | $\le 2.0\%$ |
 | **G3** | 5-Class Category Macro-F1 (`test_unseen.csv`) | **1.0000** | **1.0000** | $\ge 0.88$ |
 | **G4** | Adversarial & Obfuscated Recall (`test_adversarial.csv`) | **1.0000** | **1.0000** | $\ge 0.90$ |
-| **G5** | Calibration (`ECE` / `Brier Score`) | **0.0085** / **0.0105** | **0.0071** / **0.0117** | $\le 0.06$ / $\le 0.08$ |
-| **G6** | Median CPU Latency | **36.27 ms** | **5.69 ms** | $< 80\text{ ms}$ / $< 10\text{ ms}$ |
-| **G7** | Python Lite vs PWA JS Parity (100 samples) | — | **max $\Delta = 0.0010$**, 0 mismatches | $< 0.005$ |
+| **G5** | Calibration (`ECE` / `Brier Score`) | **0.0045** / **0.0056** | **0.0038** / **0.0084** | $\le 0.06$ / $\le 0.08$ |
+| **G6** | Median CPU Latency | **34.48 ms** | **5.18 ms** | $< 80\text{ ms}$ / $< 10\text{ ms}$ |
+| **G7** | Python Lite vs PWA JS Parity (100 samples) | — | **max $\Delta = 0.0001$**, 0 mismatches | $< 0.005$ |
 | **G8** | Subprocess Zero-Network Audit (`tests/verify_offline.py`) | **0 sockets, 0 bytes** | **0 sockets, 0 bytes** | `0` sockets / `0` bytes |
 | **G9** | GitHub Packaging (`< 100 MB` files, zero CDN in `frontend/dist/`) | **Pass** | **Pass** | Pass |
 | **G10** | Held-Out Real-World Indian Stress (`test_realworld_stress.csv`, 50 msgs) | **100.0%** (50/50) | **100.0%** (50/50) | $\ge 92.0\%$ |
-| **G11** | Blind OOD Safe FPR (`test_ood_safe.csv`, 31 msgs) | **0.0%** (0/31) | **0.0%** (0/31) | $\le 5.0\%$ |
+| **G11** | Blind OOD Safe FPR (`test_ood_safe.csv`, 31 msgs) | **0.0%** (0/31) | **3.23%** (1/31) | $\le 5.0\%$ |
 | **G12** | Headerless Transactional & Promo FPR (`test_transactional_safe.csv`, 25 msgs) | **0.0%** (0/25) | **0.0%** (0/25) | $\le 4.0\%$ |
 | **G13** | Blind Multilingual + Novel Scam + Tricky Safe (`test_blind_multilingual.csv`, 24 msgs) | **100.0%** (24/24) | **100.0%** (24/24) | $\ge 92.0\%$ |
+| **G14** | Blind Commercial Ads Safe FPR (`test_ads_safe.csv`, 20 msgs) | **5.0%** (1/20) | **0.0%** (0/20) | $\le 5.0\%$ |
 
 ---
 

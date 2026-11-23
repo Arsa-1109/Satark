@@ -9,7 +9,7 @@ const CORE_ASSETS = [
   "./model_bundle.js",
   "./benchmarks_summary.json",
   "./assets/index-BBW1YpQ1.css",
-  "./assets/index-Bua6YB5j.js"
+  "./assets/index-D7vaeUXg.js"
 ];
 
 self.addEventListener("install", (event) => {

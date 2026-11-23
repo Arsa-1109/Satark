@@ -62,6 +62,7 @@ def evaluate_mode(
     ood_df: pd.DataFrame,
     tx_df: pd.DataFrame,
     multi_df: pd.DataFrame,
+    ads_df: pd.DataFrame,
     force_lite: bool,
 ) -> tuple[dict, list[dict]]:
     # 1. Unseen test
@@ -152,6 +153,14 @@ def evaluate_mode(
             multi_ok += 1
     multi_acc = multi_ok / max(len(multi_df), 1)
 
+    # 8. Blind Commercial Ads SAFE Suite (Gate G14)
+    ads_fp = 0
+    for txt in ads_df["text"].astype(str).tolist():
+        res = engine.analyze(txt, force_lite=force_lite)
+        if res["verdict"] == "SCAM":
+            ads_fp += 1
+    ads_fpr_pct = (ads_fp / max(len(ads_df), 1)) * 100.0
+
     median_ms = float(statistics.median(latencies[5:])) if len(latencies) > 10 else float(statistics.median(latencies))
 
     metrics = {
@@ -177,6 +186,9 @@ def evaluate_mode(
         "blind_multilingual_accuracy": round(multi_acc, 4),
         "blind_multilingual_correct": multi_ok,
         "blind_multilingual_total": len(multi_df),
+        "ads_safe_fpr_pct": round(ads_fpr_pct, 2),
+        "ads_safe_fp_count": ads_fp,
+        "ads_safe_total": len(ads_df),
     }
     return metrics, curve
 
@@ -190,12 +202,13 @@ def main() -> None:
     ood_df = pd.read_csv(DATA_PROC / "test_ood_safe.csv")
     tx_df = pd.read_csv(DATA_PROC / "test_transactional_safe.csv")
     multi_df = pd.read_csv(DATA_PROC / "test_blind_multilingual.csv")
+    ads_df = pd.read_csv(DATA_PROC / "test_ads_safe.csv")
 
     engine = SatarkEngine()
     print("Evaluating Full ONNX Hybrid...")
-    full_metrics, full_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, multi_df, force_lite=False)
+    full_metrics, full_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, multi_df, ads_df, force_lite=False)
     print("Evaluating Lite Fallback...")
-    lite_metrics, lite_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, multi_df, force_lite=True)
+    lite_metrics, lite_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, multi_df, ads_df, force_lite=True)
 
     summary = {
         "full_onnx_hybrid": full_metrics,
@@ -211,6 +224,7 @@ def main() -> None:
             "G11_ood_safe_fpr_le_5pct": full_metrics["ood_safe_fpr_pct"] <= 5.0 and lite_metrics["ood_safe_fpr_pct"] <= 5.0,
             "G12_transactional_promo_fpr_le_4pct": full_metrics["transactional_fpr_pct"] <= 4.0 and lite_metrics["transactional_fpr_pct"] <= 4.0,
             "G13_blind_multilingual_ge_92pct": full_metrics["blind_multilingual_accuracy"] >= 0.92,
+            "G14_commercial_ads_fpr_le_5pct": full_metrics["ads_safe_fpr_pct"] <= 5.0 and lite_metrics["ads_safe_fpr_pct"] <= 5.0,
         },
         "calibration_curve": full_curve,
     }

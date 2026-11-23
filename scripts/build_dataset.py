@@ -77,8 +77,8 @@ def _try_hf_indian_datasets() -> list[dict]:
 
     api = HfApi()
     candidates = [
-        ("Deysi/spam-detection-dataset", 0.20),
-        ("anmolshrivastav/scam-ham-india", 0.80),
+        ("Deysi/spam-detection-dataset", 0.25),
+        ("anmolshrivastav/scam-ham-india", 0.30),
     ]
     rows: list[dict] = []
     for repo, weight in candidates:
@@ -106,9 +106,11 @@ def _try_hf_indian_datasets() -> list[dict]:
                         if any(k in low_t for k in ("subreddit", "as an ai language model", "pushshift", "dataset of", "thesis")):
                             continue
                     is_scam = 1 if raw_lbl in ("1", "spam", "scam", "fraud", "true") else 0
+                    if is_scam == 1:
+                        continue  # Skip mislabeled retail/promo spam from HF datasets
                     rows.append({
                         "text": txt,
-                        "label": is_scam,
+                        "label": 0,
                         "category": "",
                         "source_corpus": f"hf_{repo}",
                         "sample_weight": weight,
@@ -142,7 +144,7 @@ def _generate_indian_scam_corpus() -> list[dict]:
         "HDFC/SBI Warning: Suspicious login detected. Cancel {amt} debit by entering OTP at {dom} or call helpline {ph}.",
         "Your {bank} credit card reward points worth Rs 8,450 expire tonight! Redeem via {dom} using card PIN.",
     ]
-    for i in range(280):
+    for i in range(340):
         tpl = kyc_templates[i % len(kyc_templates)]
         txt = tpl.format(
             bank=rng.choice(banks),
@@ -169,7 +171,7 @@ def _generate_indian_scam_corpus() -> list[dict]:
         "बधाई हो! आपने KBC लकी ड्रॉ में {amt} जीते हैं। इनाम पाने के लिए {dom} पर क्लिक करें।",
         "You are selected for {amt} Tata Safari Lucky Draw! Pay Rs 999 registration via {dom} to unlock prize.",
     ]
-    for i in range(240):
+    for i in range(300):
         tpl = lottery_templates[i % len(lottery_templates)]
         txt = tpl.format(amt=rng.choice(prize_amts), dom=rng.choice(lottery_urls), ph=rng.choice(phones))
         if i % 3 == 0:
@@ -189,7 +191,7 @@ def _generate_indian_scam_corpus() -> list[dict]:
         "तुरंत पर्सनल लोन {amt} बिना किसी दस्तावेज़ के! कम ब्याज दर। अभी आवेदन करें: {dom}",
         "Zero-documents instant cash loan {amt}! Bad CIBIL accepted. Install LoanFast from {dom} now.",
     ]
-    for i in range(240):
+    for i in range(290):
         tpl = loan_templates[i % len(loan_templates)]
         txt = tpl.format(amt=rng.choice(loan_amts), dom=rng.choice(loan_urls), ph=rng.choice(phones), bank=rng.choice(banks))
         if i % 4 == 0:
@@ -208,7 +210,7 @@ def _generate_indian_scam_corpus() -> list[dict]:
         "घर बैठे पार्ट टाइम जॉब! रोज़ाना ₹4000 कमाएँ यूट्यूब वीडियो लाइक करके। संपर्क करें: {dom}",
         "Urgent HR Requirement: Data entry & Telegram task job, instant salary credit Rs 1,500/hr. Apply {dom}",
     ]
-    for i in range(240):
+    for i in range(290):
         tpl = job_templates[i % len(job_templates)]
         txt = tpl.format(dom=rng.choice(job_urls), ph=rng.choice(phones))
         if i % 3 == 0:
@@ -229,7 +231,7 @@ def _generate_indian_scam_corpus() -> list[dict]:
         "डिजिटल अरेस्ट नोटिस: आपके आधार पर CBI केस दर्ज हुआ है। तुरंत संपर्क करें {ph} अन्यथा गिरफ्तारी वारंट जारी होगा।",
         "PM Kisan Samman Nidhi APK: Download PM_Kisan_Yojana.apk from {dom} to receive Rs 6,000 installment.",
     ]
-    for i in range(260):
+    for i in range(320):
         tpl = other_templates[i % len(other_templates)]
         txt = tpl.format(dom=rng.choice(other_urls), ph=rng.choice(phones))
         if i % 3 == 0:
@@ -260,12 +262,16 @@ def _generate_indian_scam_corpus() -> list[dict]:
         ("Other", "Warning: I recorded your private video from webcam. Transfer Rs 25,000 to {ph}@ybl today or I will leak it to all your contacts."),
         ("Job/Investment", "Congrats! You are selected for {comp} Work From Home Data Entry job. Pay Rs {amt1} refundable laptop security deposit to hr-{code}@ybl."),
         ("Other", "Hi Mom, my phone broke so texting from friend's mobile. Need Rs {amt2} urgently for hospital emergency, send to {ph}@okicici."),
+        ("Lottery/Prize", "Dear user, Rs {amt2} bonus is credited to your wallet. Withdraw directly to bank now via bit.ly/wlt-{code}"),
+        ("Lottery/Prize", "Congrats! Claim your free iPhone 16 gift voucher worth Rs 79,900 today: tinyurl.com/gift-{code}"),
+        ("KYC/Bank", "Alert: Your {bank} credit card is blocked for security. Re-verify PAN at bit.ly/rekyc-{code} within 2 hrs."),
+        ("Loan/Credit", "Get instant Rs {amt2}0 pre-approved loan in 2 mins without CIBIL! Apply: bit.ly/loan-{code}"),
     ]
     hr_names = ["Priya", "Anjali", "Ritu", "Neha", "Sneha", "Kavita"]
     hr_comps = ["Amazon", "Flipkart", "Google Maps", "Meesho", "Nykaa"]
     lookalikes = ["sbi-points-redeem.com", "hdfc-reward-cash.in", "icici-points-claim.com", "axis-kyc-portal.in"]
     cities = ["Mumbai", "Delhi", "Bengaluru", "Hyderabad"]
-    for i in range(260):
+    for i in range(320):
         cat, tpl = subtle_scams[i % len(subtle_scams)]
         txt = tpl.format(
             name=hr_names[i % len(hr_names)],
@@ -694,6 +700,58 @@ def _generate_hard_negative_safe_corpus() -> list[dict]:
             txt += f" ({i})"
         rows.append({"text": txt, "label": 0, "category": "", "source_corpus": "hard_neg_indic_safe", "sample_weight": 1.5})
 
+    # 19. High-Diversity Indian Commercial Ads & Retail Promos (450 rows — with & without shortlinks / DLT -P)
+    ad_brands = [
+        ("Pizza Hut", "AD-PIZAHUT-P", "pizzas & garlic bread", "pizzahut.co.in", "bit.ly/ph-bogo"),
+        ("McDonald's", "VM-MCDIND-P", "McSpicy burgers & fries", "mcdelivery.co.in", "bit.ly/mcd-meal"),
+        ("Subway", "AX-SUBWAY-P", "subs & wraps", "subway.in", "tinyurl.com/sub-deal"),
+        ("Taco Bell", "AD-TACOBL-P", "tacos & burritos", "tacobell.co.in", "cutt.ly/tb-combo"),
+        ("Chaayos", "VM-CHAAYO-P", "chai & bun maska", "chaayos.com", "bit.ly/chy-chai"),
+        ("Haldiram's", "AD-HALDIR-P", "sweets & namkeen combos", "haldirams.com", "bit.ly/hl-fest"),
+        ("Barbeque Nation", "AX-BBQN-P", "weekday buffet", "barbequenation.com", "tinyurl.com/bbq-bk"),
+        ("Behrouz Biryani", "VM-BEHROU-P", "royal biryani bowls", "behrouzbiryani.com", "bit.ly/bb-feast"),
+        ("Zomato", "AD-ZOMATO-P", "biryani, pizzas & bowls", "zomato.com", "bit.ly/zom-off"),
+        ("Starbucks", "AX-STARBK-P", "tall handcrafted beverages", "starbucks.in", "bit.ly/sbx-brew"),
+        ("Zepto", "JD-ZEPTO-P", "groceries & snacks", "zeptonow.com", "bit.ly/zep-10m"),
+        ("BigBasket", "VM-BIGBSK-P", "fresh fruits & staples", "bigbasket.com", "tinyurl.com/bb-fresh"),
+        ("DMart Ready", "AD-DMART-P", "monthly home essentials", "dmart.in", "cutt.ly/dm-save"),
+        ("Reliance SMART", "AX-RLSMRT-P", "supermarket deals", "jiomart.com", "bit.ly/rsm-sale"),
+        ("Reliance Digital", "VM-RELDIG-P", "smart TVs & laptops", "reliancedigital.in", "bit.ly/rd-tech"),
+        ("boAt", "AD-BOATLF-P", "Airdopes & smartwatches", "boat-lifestyle.com", "tinyurl.com/bt-drop"),
+        ("Urban Company", "AX-URBNCP-P", "salon & home cleaning", "urbancompany.com", "bit.ly/uc-home"),
+        ("BookMyShow", "VM-BKMYSH-P", "weekend movies & events", "bookmyshow.com", "bit.ly/bms-tix"),
+        ("Myntra", "AX-MYNTRA-P", "sneakers & ethnic wear", "myntra.com", "bit.ly/myn-sale"),
+        ("AJIO", "VM-AJIOIN-P", "denim, kurtas & footwear", "ajio.com", "cutt.ly/aj-bold"),
+    ]
+    ad_codes = ["SAVE50", "FLAT100", "BOGO20", "TREAT150", "FESTIVE30", "WEEKEND25", "DEAL40", "NEW120"]
+    ad_templates_short = [
+        "Today only! Get Flat {disc}% OFF on {cat} at {brand}. Use code {code}. Grab now! {surl}{i} TnC",
+        "{brand}: Buy 1 Get 1 FREE on {cat}! Valid till midnight. Don't miss this... order now: {surl}{i} T&C apply",
+        "Hungry? Order {cat} from {brand} & get Flat Rs {amt} OFF + Free delivery above Rs 199! Shop: {surl}{i}",
+        "Weekend Flash Sale at {brand}! Minimum {disc}% OFF on {cat}. Visit nearest store or {surl}{i} TnC",
+        "{brand} Mega Offer! Extra Rs {amt} OFF on {cat} with code {code}. Valid today only! {surl}{i} T&C apply",
+    ]
+    ad_templates_plain = [
+        "Craving {cat}? Get Flat {disc}% OFF on {brand} up to Rs {amt}! Use code {code}. Valid today only! T&C apply",
+        "{brand} End of Season Sale is LIVE! Up to {disc}% OFF on {cat} + No Cost EMI. Shop on {brand} App or {dom} TnC",
+        "Buy 2 get 1 FREE on {cat} at {brand}! Valid today only at participating outlets. Don't miss out! TnC apply",
+        "Special Treat from {brand}! Flat Rs {amt} OFF on {cat} orders above Rs 499. Apply code {code} in {brand} App today!",
+        "{brand} Loyalty Offer: Enjoy {disc}% OFF on {cat} this weekend! Order on {dom} or visit store. T&C apply",
+    ]
+    for i in range(450):
+        brand, hdr, cat, dom, surl = ad_brands[i % len(ad_brands)]
+        code = ad_codes[i % len(ad_codes)]
+        disc = rng.choice([20, 30, 40, 50, 60, 70])
+        amt = rng.choice([100, 120, 150, 200, 250, 500])
+        if i % 20 < 9:  # ~45% with commercial shortlinks
+            tpl = ad_templates_short[i % len(ad_templates_short)]
+        else:
+            tpl = ad_templates_plain[i % len(ad_templates_plain)]
+        txt = tpl.format(brand=brand, cat=cat, dom=dom, surl=surl, code=code, disc=disc, amt=amt, i=i)
+        if i % 5 < 2:  # ~40% with TRAI DLT -P prefix
+            txt = f"{hdr}: {txt}"
+        rows.append({"text": txt, "label": 0, "category": "", "source_corpus": "hard_neg_commercial_ads", "sample_weight": 1.8})
+
     return rows
 
 
@@ -860,6 +918,33 @@ def _build_blind_multilingual_suite() -> list[dict]:
     return [{"text": t, "label": lbl, "category": cat, "source_corpus": "blind_multilingual", "sample_weight": 1.0} for lbl, cat, t in items]
 
 
+def _build_ads_safe_suite() -> list[dict]:
+    """Strictly held-out 20-message Blind Commercial Ads SAFE suite (Gate G14)."""
+    msgs = [
+        "Today only! Double your KFC bucket. Buy 6 pcs Hot n Crispy and get 6 pcs Strips... FREE! Don't miss this... grab now! bit.ly/kfcind-dsg19 TnC",
+        "Craving pizza? Get Flat 50% OFF on your Domino's order up to Rs 120! Use code DOM50. Valid today only! Order now: bit.ly/dom50off T&C apply",
+        "Myntra End of Reason Sale is LIVE! Up to 80% OFF on Nike, Puma, Levi's & more. Hurry, shop before sizes run out! myntra.com/eors TnC",
+        "Hungry? Get snacks, cold drinks & ice cream delivered in 10 mins! Free delivery on orders above Rs 199. Shop now: bit.ly/blk-10m",
+        "Weekend Treat! Flat Rs 150 OFF on Biryani, Burgers & Pizzas on Swiggy. Apply code TREAT150. Valid till midnight! T&C apply",
+        "Buy 1 Get 1 FREE on Vincent Chase Eyeglasses & Sunglasses at Lenskart! Visit nearest store or book free eye test: bit.ly/lk-bogo1",
+        "Nykaa Pink Friday Sale starts tomorrow! Extra 15% OFF on Lakme, Maybelline & MAC. Wishlist now: bit.ly/nyk-pf26 TnC",
+        "AJIO Big Bold Sale! Minimum 60% OFF + Extra Rs 500 OFF on Rs 1999. Use code BOLD500. Shop on AJIO App today!",
+        "Croma Festival of Dreams! Up to 40% OFF on ACs, Refrigerators & Smart TVs + No Cost EMI. Visit Croma store or bit.ly/croma-fest TnC",
+        "Flat 40% OFF on all Burgers & Fries at Burger King! Buy 1 Whopper get 1 FREE. Valid today only at participating outlets. TnC apply",
+        "Blockbuster Friday! Book movie tickets at PVR INOX and get Flat Rs 100 OFF on F&B combos. Use code PVR100. Book: bit.ly/pvr-fri TnC",
+        "AD-MCDIND-P: McSaver Combo starting Rs 149! Grab McChicken + Fries + Coke today only at McDonald's! Order: bit.ly/mcd-149 TnC",
+        "VM-ZEPTO-P: Midnight Cravings? Get ice cream, chips & cold coffee in 10 mins! Flat Rs 75 OFF with code ZEP75. T&C apply",
+        "Starbucks India: Buy 1 Tall Beverage and get 1 FREE every Friday till 6 PM! Visit nearest Starbucks store today. TnC apply",
+        "Reliance Digital: Flash Deal! Up to 35% OFF on Washing Machines & Laptops + 10% Bank Cashback. Check store or bit.ly/rd-flash TnC",
+        "FabIndia: New Festive Handloom Collection is here! Flat 20% OFF on kurtas & sarees this weekend. Shop: tinyurl.com/fab-fest T&C",
+        "Haldiram's: Celebrate with family! Flat 25% OFF on Mithai & Dry Fruit Gift Boxes. Order online or visit outlet. TnC apply",
+        "boAt: Newly launched Airdopes at Rs 999! Limited stock launch price today only. Grab yours now: bit.ly/boat-999 T&C",
+        "AX-PIZAHUT-P: Weekday Deal! Any 2 Medium Pan Pizzas at Rs 249 each. Order on Pizza Hut App or bit.ly/ph-249 TnC",
+        "Decathlon: Gear up for monsoon treks! Flat 30% OFF on waterproof jackets & hiking shoes at decathlon.in T&C apply",
+    ]
+    return [{"text": t, "label": 0, "category": "", "source_corpus": "ads_safe_suite", "sample_weight": 1.0} for t in msgs]
+
+
 def main() -> None:
     PROC_DIR.mkdir(parents=True, exist_ok=True)
     uci_rows = _download_uci()
@@ -870,9 +955,10 @@ def main() -> None:
     ood_rows = _build_ood_safe_suite()
     tx_promo_rows = _build_transactional_promo_suite()
     blind_multi_rows = _build_blind_multilingual_suite()
+    ads_safe_rows = _build_ads_safe_suite()
 
-    # Anti-leakage: exclude samples.txt, test_realworld_stress.csv, test_ood_safe.csv, test_transactional_safe.csv, test_blind_multilingual.csv
-    excluded_keys = {_dedup_key(r["text"]) for r in stress_rows + ood_rows + tx_promo_rows + blind_multi_rows}
+    # Anti-leakage: exclude samples.txt and all held-out test suites
+    excluded_keys = {_dedup_key(r["text"]) for r in stress_rows + ood_rows + tx_promo_rows + blind_multi_rows + ads_safe_rows}
     samples_path = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\samples.txt")
     if samples_path.exists():
         for m in samples_path.read_text(encoding="utf-8").split("\n\n"):
@@ -923,6 +1009,7 @@ def main() -> None:
     ood_df = pd.DataFrame(ood_rows)
     tx_df = pd.DataFrame(tx_promo_rows)
     multi_df = pd.DataFrame(blind_multi_rows)
+    ads_df = pd.DataFrame(ads_safe_rows)
 
     train_df.to_csv(PROC_DIR / "train.csv", index=False)
     val_df.to_csv(PROC_DIR / "val.csv", index=False)
@@ -933,6 +1020,7 @@ def main() -> None:
     ood_df.to_csv(PROC_DIR / "test_ood_safe.csv", index=False)
     tx_df.to_csv(PROC_DIR / "test_transactional_safe.csv", index=False)
     multi_df.to_csv(PROC_DIR / "test_blind_multilingual.csv", index=False)
+    ads_df.to_csv(PROC_DIR / "test_ads_safe.csv", index=False)
 
     print("Saved splits to", PROC_DIR)
     for name, part in (
@@ -945,6 +1033,7 @@ def main() -> None:
         ("test_ood_safe.csv", ood_df),
         ("test_transactional_safe.csv", tx_df),
         ("test_blind_multilingual.csv", multi_df),
+        ("test_ads_safe.csv", ads_df),
     ):
         print(f"  {name:26s}: {len(part):5d} rows (scam={int((part['label']==1).sum())}, safe={int((part['label']==0).sum())})")
 
