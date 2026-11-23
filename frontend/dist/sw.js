@@ -8,8 +8,8 @@ const CORE_ASSETS = [
   "./icon-512.png",
   "./model_bundle.js",
   "./benchmarks_summary.json",
-  "./assets/index-Bn9LWAIL.css",
-  "./assets/index-C9hk57Hr.js"
+  "./assets/index-BBW1YpQ1.css",
+  "./assets/index-Bua6YB5j.js"
 ];
 
 self.addEventListener("install", (event) => {

@@ -416,17 +416,31 @@ def _generate_hard_negative_safe_corpus() -> list[dict]:
         )
         rows.append({"text": txt, "label": 0, "category": "", "source_corpus": "hard_neg_safe_url", "sample_weight": 1.5})
 
-    # 7. Telecom & DTH usage / plan expiry alerts (directing to official apps/domains)
+    # 7. Telecom & DTH usage / plan expiry / missed-call alerts (directing to official apps/domains)
     telecom_templates = [
         "Dear Customer, your Jio plan of Rs {amt} is expiring in {days} days. Recharge now on MyJio app or jio.com to enjoy uninterrupted services.",
         "Airtel: You have used {pct}% of your daily {gb}GB data quota. Buy a data pack on Airtel Thanks app.",
         "Vi: Your unlimited 5G pack validity ends in {days} days. Renew easily via Vi app or vi.in.",
         "BSNL: Your FTTH broadband bill of Rs {amt} is ready. Pay securely on bsnl.co.in or MyBSNL app.",
         "Tata Play: Your DTH balance is low (Rs 45). Recharge via Tata Play app to continue watching your channels.",
+        "Jio: You have {n} missed call(s) from {ph} at {time} when your phone was switched off. View call log in MyJio app.",
+        "Vi Missed Call Alert: {ph} tried calling you {n} time(s) while you were out of coverage. Details in Vi app.",
+        "Airtel: While your number was unreachable, you received {n} missed call(s). Check the Airtel Thanks app for details.",
+        "BSNL: {n} calls were missed while your mobile was not reachable on {date}. Dial *121# for details.",
+        "Jio: {ph} is now available to take your call. You had tried calling earlier.",
     ]
-    for i in range(90):
+    for i in range(150):
         tpl = telecom_templates[i % len(telecom_templates)]
-        txt = tpl.format(amt=rng.choice([239, 299, 349, 666, 799]), days=rng.randint(1, 5), pct=rng.choice([50, 90, 100]), gb=rng.choice(["1.5", "2.0", "2.5"]))
+        txt = tpl.format(
+            amt=rng.choice([239, 299, 349, 666, 799]),
+            days=rng.randint(1, 5),
+            pct=rng.choice([50, 90, 100]),
+            gb=rng.choice(["1.5", "2.0", "2.5"]),
+            n=rng.randint(1, 5),
+            ph=f"9{rng.randint(100000000, 999999999)}",
+            time=f"{rng.randint(10, 21)}:{rng.randint(10, 59)}",
+            date=f"{rng.randint(10, 28)}-11-2026",
+        )
         if i >= len(telecom_templates):
             txt += f" [ID:{100 + i}]"
         rows.append({"text": txt, "label": 0, "category": "", "source_corpus": "hard_neg_telecom_utility", "sample_weight": 1.5})
@@ -778,6 +792,7 @@ def _build_ood_safe_suite() -> list[dict]:
         "Coursera: Congratulations on completing Machine Learning Specialization! Download your certificate.",
         "BSES: Thank you for paying your electricity bill of Rs 2,180 via BBPS.",
         "WhatsApp: Your two-step verification PIN reminder. Never share this PIN with anyone.",
+        "1 missed call(s) received on 02-11-2026 while your Airtel number was not reachable. Get details of your missed calls ONLY on Airtel App - https://i.airtel.in/1_MissedCall",
     ]
     return [{"text": t, "label": 0, "category": "", "source_corpus": "ood_safe", "sample_weight": 1.0} for t in ood_msgs]
 

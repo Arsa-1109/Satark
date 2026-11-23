@@ -305,6 +305,7 @@ export function extractForensics(norm, sender = null) {
   const has_raw_ip_url = hosts.some((h) => IPV4_RE.test(h)) ? 1.0 : 0.0;
   const has_punycode_url = hosts.some((h) => h.includes("xn--") || /[^\x00-\x7f]/.test(h)) ? 1.0 : 0.0;
   const has_official_domain = hosts.some(isOfficialHost) ? 1.0 : 0.0;
+  const all_urls_official = urls.length > 0 && hosts.every(isOfficialHost);
 
   urls.forEach((u, idx) => {
     const h = hosts[idx];
@@ -544,7 +545,7 @@ export function extractForensics(norm, sender = null) {
     ),
   };
 
-  return { features, pillars, urls, upi_payloads, dlt_header, sender_analysis, triggers: triggers.slice(0, 10) };
+  return { features, pillars, urls, upi_payloads, dlt_header, sender_analysis, all_urls_official, triggers: triggers.slice(0, 10) };
 }
 
 function buildVocabMap(vocabArr) {
@@ -633,7 +634,6 @@ function inferSubType(cleanText, f, category) {
     return "Utility Threat";
   }
   if (f[9] > 0 || f[7] > 0) return "Impersonation";
-  if (category === "Other") return "Impersonation";
   return null;
 }
 
@@ -724,6 +724,24 @@ export function analyzeLocal(text, source = "text", modelBundle = null, sender =
   }
   if (fr.sender_analysis?.impersonation_risk) {
     pScam = Math.max(pScam, 0.85);
+  }
+
+  // Trusted-Evidence Guard (verified official links + zero risk triggers)
+  const riskTriggerCount = fr.triggers.filter((t) => t.polarity === "risk").length;
+  if (
+    f[6] > 0 &&
+    fr.all_urls_official &&
+    riskTriggerCount === 0 &&
+    f[7] === 0 &&
+    f[8] === 0 &&
+    f[9] === 0 &&
+    f[10] === 0 &&
+    f[11] === 0 &&
+    f[13] === 0 &&
+    f[23] === 0 &&
+    !fr.sender_analysis?.impersonation_risk
+  ) {
+    pScam = Math.min(pScam, 0.30);
   }
 
   const verdict = pScam >= bundle.stage_a.threshold ? "SCAM" : "SAFE";

@@ -118,6 +118,24 @@ def test_headerless_transactional_and_sender_id() -> None:
     assert res_spoof["forensics"]["sender_analysis"]["impersonation_risk"] is True
 
 
+def test_official_link_notification_trusted_guard() -> None:
+    airtel_safe = (
+        "1 missed call(s) received on 02-11-2026 while your Airtel number was not reachable. "
+        "Get details of your missed calls ONLY on Airtel App - https://i.airtel.in/1_MissedCall"
+    )
+    res_safe = engine.analyze(airtel_safe)
+    assert res_safe["verdict"] == "SAFE"
+    assert res_safe["scam_probability"] <= 0.30
+
+    # Guard must NOT whitelist scams that include an official link alongside risk cues
+    scam_with_official = "Your Airtel number will be blocked today. Verify KYC at https://i.airtel.in/kyc or call 9876543210 immediately."
+    assert engine.analyze(scam_with_official)["verdict"] == "SCAM"
+
+    # Mixed official + shortener link must NOT be trusted
+    mixed_links = "Airtel: Claim your free 100GB data at https://i.airtel.in/offer and bit.ly/airtel-gift now!"
+    assert engine.analyze(mixed_links)["verdict"] == "SCAM"
+
+
 def test_gate_g9_packaging_and_zero_cdn() -> None:
     summary_path = ROOT / "models" / "lite" / "benchmarks_summary.json"
     assert summary_path.exists(), "models/lite/benchmarks_summary.json missing"

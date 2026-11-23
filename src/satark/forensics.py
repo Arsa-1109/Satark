@@ -191,6 +191,7 @@ class ForensicsResult:
     dlt_header: str | None
     triggers: list[dict[str, str]]
     sender_analysis: dict[str, object]
+    all_urls_official: bool = False
 
 
 def _extract_host(raw_url: str) -> str:
@@ -279,6 +280,7 @@ def extract_forensics(norm: NormalizedResult, sender: str | None = None) -> Fore
     has_raw_ip_url = 1.0 if any(_IPV4_RE.match(h) for h in hosts) else 0.0
     has_punycode_url = 1.0 if any("xn--" in h or any(ord(c) > 127 for c in h) for h in hosts) else 0.0
     has_official_domain = 1.0 if any(_is_official_host(h) for h in hosts) else 0.0
+    all_urls_official = len(urls) > 0 and all(_is_official_host(h) for h in hosts)
 
     for u, h in zip(urls, hosts):
         if h in SHORTENERS:
@@ -570,4 +572,5 @@ def extract_forensics(norm: NormalizedResult, sender: str | None = None) -> Fore
         dlt_header=dlt_header,
         triggers=triggers[:10],
         sender_analysis=sender_analysis,
+        all_urls_official=all_urls_official,
     )

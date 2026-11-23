@@ -82,8 +82,6 @@ def _infer_sub_type(clean_text: str, forensics: ForensicsResult, category: str) 
         return "Utility Threat"
     if f[9] > 0 or f[7] > 0:
         return "Impersonation"
-    if category == "Other":
-        return "Impersonation"
     return None
 
 
@@ -231,6 +229,23 @@ class SatarkEngine:
             p_scam = max(p_scam, 0.78)
         if forensics.sender_analysis.get("impersonation_risk"):
             p_scam = max(p_scam, 0.85)
+
+        # Trusted-Evidence Guard (verified official links + zero risk triggers)
+        risk_trigger_count = sum(1 for t in forensics.triggers if t["polarity"] == "risk")
+        if (
+            f[6] > 0
+            and forensics.all_urls_official
+            and risk_trigger_count == 0
+            and f[7] == 0
+            and f[8] == 0
+            and f[9] == 0
+            and f[10] == 0
+            and f[11] == 0
+            and f[13] == 0
+            and f[23] == 0
+            and not forensics.sender_analysis.get("impersonation_risk")
+        ):
+            p_scam = min(p_scam, 0.30)
 
         threshold = float((self.stage_a_full if use_full else self.stage_a_lite).get("threshold", 0.5))
         verdict = "SCAM" if p_scam >= threshold else "SAFE"
