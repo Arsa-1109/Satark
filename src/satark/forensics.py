@@ -76,6 +76,9 @@ OFFICIAL_DOMAINS = frozenset({
     "github.com", "linkedin.com", "naukri.com", "internshala.com", "zerodha.com",
     "groww.in", "cred.club", "jiocinema.com", "hotstar.com", "youtu.be",
     "youtube.com", "forms.gle", "google.com",
+    "sihub.in", "billdesk.com", "hdfcbk.io", "kotak.in", "axbk.in",
+    "sbi.in", "icicibank.in", "canarabank.com", "unionbankofindia.co.in",
+    "federalbank.co.in", "yesbank.in", "indusind.com", "idfcfirstbank.com",
 })
 
 BRAND_KEYWORDS = (
@@ -131,9 +134,15 @@ _WA_TG_RE = re.compile(
     re.IGNORECASE,
 )
 _PHONE_CALLBACK_RE = re.compile(
-    r"(?:\b(?:call|contact|whatsapp|helpline|dial)\b.{0,35}(?:\+91[\-\s]?)?[6-9]\d{9}|(?:\+91[\-\s]?)?[6-9]\d{9}.{0,35}\b(?:call|contact|whatsapp|helpline|dial)\b)",
+    r"(?:\b(?:call|contact|whatsapp|helpline|dial)\b.{0,35}(?<!\d)(?:\+91[\-\s]?)?[6-9]\d{9}(?!\d)|(?<!\d)(?:\+91[\-\s]?)?[6-9]\d{9}(?!\d).{0,35}\b(?:call|contact|whatsapp|helpline|dial)\b)",
     re.IGNORECASE,
 )
+_BANK_DISPUTE_PHONE_RE = re.compile(
+    r"\b(?:not\s+you|if\s+not\s+done\s+by\s+you|to\s+report|to\s+dispute|sms\s+block|forward\s+this\s+sms\s+to)\b",
+    re.IGNORECASE,
+)
+_SENDER_DLT_RE = re.compile(r"^[A-Z]{2}-[A-Z0-9]{5,6}(?:-([TSGP]))?$", re.IGNORECASE)
+_SENDER_MOBILE_RE = re.compile(r"^(?:\+91[\-\s]?)?[6-9]\d{9}$")
 _TOLLFREE_RE = re.compile(r"(?:1800[\-\s]?\d{3}[\-\s]?\d{4}|\b1930\b)")
 _CURRENCY_RE = re.compile(r"(?:(?:rs\.?|inr|₹)\s*(\d[\d,]*(?:\.\d+)?)|\b(\d+(?:\.\d+)?)\s*(lakh|crore|k)\b)", re.IGNORECASE)
 _ASKS_OTP_RE = re.compile(r"\b(?:share|send|enter|tell|provide|verify|batao|bhejo)\b.{0,20}\b(?:otp|pin|cvv|mpin|password)\b", re.IGNORECASE)
@@ -153,10 +162,18 @@ _UPI_VPA_RE = re.compile(
 _DLT_HEADER_RE = re.compile(r"\b[A-Z]{2}-[A-Z0-9]{5,6}(?:-[TSGP])?\b")
 _DLT_TX_SUFFIX_RE = re.compile(r"\b[A-Z]{2}-[A-Z0-9]{5,6}-[TSG]\b")
 _BANK_TX_RE = re.compile(
-    r"\b(?:debited|credited|spent|withdrawn)\b.{0,40}\b(?:a/c|acct|account|card)\b.{0,20}(?:x{1,4}\d{3,4}|\*{2,4}\d{3,4})",
+    r"(?:"
+    r"\b(?:debited|credited|spent|withdrawn|auto-debited|autodebited)\b.{0,45}\b(?:a/c|ac|acct|account|card)\b.{0,25}(?:x{1,8}\d{3,4}|\*{1,4}\d{3,4}|ending\s+\d{4}|\.\.\.\d{4})"
+    r"|\b(?:a/c|ac|acct|account|card)\b.{0,25}(?:x{1,8}\d{3,4}|\*{1,4}\d{3,4}|ending\s+\d{4}|\.\.\.\d{4}).{0,45}\b(?:debited|credited|spent|withdrawn|declined)\b"
+    r"|\b(?:amt\s+)?sent\s+(?:rs\.?|inr|₹)\s*[\d,]+.{0,35}\b(?:from|a/c|ac)\b"
+    r"|\bthank\s+you\s+for\s+using\s+your\b.{0,35}\b(?:debit|credit)\s+card\b"
+    r"|\btransaction\s+of\s+(?:rs\.?|inr|₹)\s*[\d,]+.{0,50}\bcard\b.{0,30}\b(?:declined|approved)\b"
+    r"|\b(?:neft|imps|rtgs)\s+transfer\s+of\s+(?:rs\.?|inr|₹)\s*[\d,]+.{0,60}\b(?:processed|credited|completed)\b"
+    r"|\bcheque\s+no\.?\s*\d+.{0,50}\bcleared\b"
+    r")",
     re.IGNORECASE,
 )
-_BANK_TX_META_RE = re.compile(r"\b(?:avail|bal|balance|upi|imps|neft|ref)\b", re.IGNORECASE)
+_BANK_TX_META_RE = re.compile(r"\b(?:avail|avl|bal|balance|upi|imps|neft|rtgs|ref|refno|limit|mandate|standing|cheque|ending|declined|sent|towards|salary|rs|inr)\b", re.IGNORECASE)
 _DELIVERY_ACTION_RE = re.compile(r"\b(?:out for delivery|dispatched|delivered|awb|tracking|order\s*#)\b", re.IGNORECASE)
 _DELIVERY_BRAND_RE = re.compile(r"\b(?:amazon|flipkart|swiggy|zomato|bluedart|delhivery|dtdc|ekart|myntra)\b", re.IGNORECASE)
 _CASUAL_HINGLISH_RE = re.compile(r"\b(?:bhai|yaar|bro|kal|mummy|papa|ghar|milte|dedunga|deta hu|bhej de|ok|haha)\b", re.IGNORECASE)
@@ -170,6 +187,7 @@ class ForensicsResult:
     upi_payloads: list[dict[str, str]]
     dlt_header: str | None
     triggers: list[dict[str, str]]
+    sender_analysis: dict[str, object]
 
 
 def _extract_host(raw_url: str) -> str:
@@ -231,7 +249,7 @@ def parse_upi_uris(text: str) -> list[dict[str, str]]:
     return results
 
 
-def extract_forensics(norm: NormalizedResult) -> ForensicsResult:
+def extract_forensics(norm: NormalizedResult, sender: str | None = None) -> ForensicsResult:
     """Extract the exact 35-feature vector f[0..34], 4-pillar X-ray, and trigger spans."""
     clean = norm.clean_text
     canon = norm.canonical_text  # already lowercased + Hinglish folded
@@ -320,15 +338,28 @@ def extract_forensics(norm: NormalizedResult) -> ForensicsResult:
     elif upi_collect_cashback_trap and not upi_payloads:
         add_trigger("UPI / cashback", "UPI payment/PIN paired with receive/cashback claim", "risk")
 
-    phone_m = _PHONE_CALLBACK_RE.search(clean)
-    has_indian_phone_callback = 1.0 if phone_m else 0.0
-    if phone_m:
-        add_trigger(phone_m.group(0)[:36], "Personal 10-digit mobile callback number", "risk")
-
     toll_m = _TOLLFREE_RE.search(clean)
     has_tollfree_official = 1.0 if toll_m else 0.0
     if toll_m:
         add_trigger(toll_m.group(0), "Official 1800/1930 helpline reference", "safe")
+
+    bank_tx_m = _BANK_TX_RE.search(clean)
+    no_tx_traps = (
+        has_shortener == 0.0
+        and has_apk_lure == 0.0
+        and has_suspicious_tld == 0.0
+        and brand_domain_mismatch == 0.0
+        and upi_collect_cashback_trap == 0.0
+    )
+    has_bank_tx_template = 1.0 if (bank_tx_m and _BANK_TX_META_RE.search(clean) and no_tx_traps) else 0.0
+    if has_bank_tx_template and bank_tx_m:
+        add_trigger(bank_tx_m.group(0)[:40], "Standard bank transaction alert template", "safe")
+
+    phone_m = _PHONE_CALLBACK_RE.search(clean)
+    is_bank_dispute_line = bool((has_bank_tx_template > 0.0 or has_tollfree_official > 0.0) and _BANK_DISPUTE_PHONE_RE.search(clean))
+    has_indian_phone_callback = 1.0 if (phone_m and not is_bank_dispute_line) else 0.0
+    if has_indian_phone_callback and phone_m:
+        add_trigger(phone_m.group(0)[:36], "Personal 10-digit mobile callback number", "risk")
 
     has_currency_amount = 0.0
     has_large_amount = 0.0
@@ -386,6 +417,9 @@ def extract_forensics(norm: NormalizedResult) -> ForensicsResult:
     elif awareness_m and no_malicious_traps:
         add_trigger(awareness_m.group(0), "Public cyber-safety / regulatory awareness advisory", "safe")
 
+    if asks_otp_or_pin > 0.0:
+        has_bank_tx_template = 0.0
+
     dlt_m = _DLT_HEADER_RE.search(clean)
     dlt_header = dlt_m.group(0) if dlt_m else None
     has_dlt_header = 1.0 if dlt_header else 0.0
@@ -393,10 +427,29 @@ def extract_forensics(norm: NormalizedResult) -> ForensicsResult:
     if dlt_header:
         add_trigger(dlt_header, "TRAI DLT registered sender header", "safe")
 
-    bank_tx_m = _BANK_TX_RE.search(clean)
-    has_bank_tx_template = 1.0 if (bank_tx_m and _BANK_TX_META_RE.search(clean)) else 0.0
-    if has_bank_tx_template and bank_tx_m:
-        add_trigger(bank_tx_m.group(0)[:40], "Standard bank transaction alert template", "safe")
+    sender_clean = sender.strip() if isinstance(sender, str) and sender.strip() else None
+    sender_analysis: dict[str, object] = {"raw": sender_clean, "type": None, "impersonation_risk": False}
+    if sender_clean:
+        sm_dlt = _SENDER_DLT_RE.match(sender_clean)
+        sm_mob = _SENDER_MOBILE_RE.match(sender_clean)
+        if sm_dlt:
+            dlt_header = sender_clean.upper()
+            has_dlt_header = 1.0
+            suffix = (sm_dlt.group(1) or "").upper()
+            type_map = {"S": "dlt_service", "T": "dlt_transactional", "G": "dlt_govt", "P": "dlt_promo"}
+            sender_analysis["type"] = type_map.get(suffix, "dlt_service")
+            if suffix in ("T", "S", "G"):
+                has_dlt_transactional_suffix = 1.0
+                add_trigger(dlt_header, "Verified TRAI DLT sender ID", "safe")
+            elif suffix == "P" and no_malicious_traps:
+                add_trigger(dlt_header, "Registered TRAI DLT promotional sender ID", "safe")
+        elif sm_mob:
+            sender_analysis["type"] = "personal_mobile"
+            if mentions_brand or kyc_bank_lex_score > 0 or threat_authority_score > 0 or reward_lure_score > 0:
+                sender_analysis["impersonation_risk"] = True
+                add_trigger(sender_clean, "Personal mobile sender impersonating institutional brand", "risk")
+        else:
+            sender_analysis["type"] = "unknown"
 
     deliv_m = _DELIVERY_ACTION_RE.search(canon)
     has_delivery_template = 1.0 if (
@@ -513,4 +566,5 @@ def extract_forensics(norm: NormalizedResult) -> ForensicsResult:
         upi_payloads=upi_payloads,
         dlt_header=dlt_header,
         triggers=triggers[:10],
+        sender_analysis=sender_analysis,
     )

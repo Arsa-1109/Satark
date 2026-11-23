@@ -17,6 +17,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Satark — On-Device Indian Scam Detector")
     parser.add_argument("text", nargs="?", help="Message text to analyze")
     parser.add_argument("--file", "-f", type=Path, help="Read message text from a file")
+    parser.add_argument("--sender", "-s", default=None, help="Optional SMS Sender ID (e.g. VM-HDFCBK-S or +919876543210)")
     parser.add_argument("--json", action="store_true", help="Output raw JSON contract")
     parser.add_argument("--lite", action="store_true", help="Force Lite Fallback mode")
     args = parser.parse_args()
@@ -32,7 +33,7 @@ def main() -> None:
         return
 
     engine = SatarkEngine(force_lite=args.lite)
-    res = engine.analyze(msg, source="text", force_lite=args.lite)
+    res = engine.analyze(msg, source="text", force_lite=args.lite, sender=args.sender)
 
     if args.json:
         print(json.dumps(res, indent=2, ensure_ascii=False))

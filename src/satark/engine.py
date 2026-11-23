@@ -179,11 +179,11 @@ class SatarkEngine:
         p_cats = self.stage_b_lite["clf"].predict_proba(x_sparse)
         return p_scam, p_cats
 
-    def analyze(self, text: str, source: str = "text", *, force_lite: bool = False) -> dict[str, Any]:
+    def analyze(self, text: str, source: str = "text", *, force_lite: bool = False, sender: str | None = None) -> dict[str, Any]:
         """Run full Layer 1 + Layer 2 inference and return PRD §3 JSON contract."""
         t0 = time.perf_counter()
         norm: NormalizedResult = normalize_text(text, validate=True)
-        forensics: ForensicsResult = extract_forensics(norm)
+        forensics: ForensicsResult = extract_forensics(norm, sender=sender)
         f = forensics.features
 
         use_full = (self.mode == "full_onnx_hybrid") and not force_lite
@@ -210,6 +210,7 @@ class SatarkEngine:
                     "urls": forensics.urls,
                     "upi_payloads": forensics.upi_payloads,
                     "dlt_header": forensics.dlt_header,
+                    "sender_analysis": forensics.sender_analysis,
                     "triggers": forensics.triggers,
                 },
                 "report_draft_1930": None,
@@ -228,6 +229,8 @@ class SatarkEngine:
         # Forensic Override Guard (Anti-Spoof)
         if (f[8] > 0 or f[7] > 0 or f[11] > 0 or f[23] > 0) and p_scam < 0.65:
             p_scam = max(p_scam, 0.78)
+        if forensics.sender_analysis.get("impersonation_risk"):
+            p_scam = max(p_scam, 0.85)
 
         threshold = float((self.stage_a_full if use_full else self.stage_a_lite).get("threshold", 0.5))
         verdict = "SCAM" if p_scam >= threshold else "SAFE"
@@ -284,6 +287,7 @@ class SatarkEngine:
                 "urls": forensics.urls,
                 "upi_payloads": forensics.upi_payloads,
                 "dlt_header": forensics.dlt_header,
+                "sender_analysis": forensics.sender_analysis,
                 "triggers": forensics.triggers,
             },
             "report_draft_1930": report_draft,

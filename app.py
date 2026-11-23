@@ -40,6 +40,7 @@ app = FastAPI(title="Satark — On-Device Scam Detector", version="1.0.0", lifes
 class AnalyzeRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=10_000)
     source: Literal["text", "clipboard", "share_target", "ocr_future"] = "text"
+    sender: str | None = Field(default=None, max_length=64)
 
     @field_validator("text")
     @classmethod
@@ -86,7 +87,7 @@ def health() -> dict:
 
 @app.post("/api/analyze")
 def analyze(req: AnalyzeRequest) -> dict:
-    return engine.analyze(req.text, source=req.source)
+    return engine.analyze(req.text, source=req.source, sender=req.sender)
 
 
 @app.post("/api/mutate")
