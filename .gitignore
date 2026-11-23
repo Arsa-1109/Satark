@@ -1,0 +1,110 @@
+# ==============================================================================
+# Environment & Secrets
+# ==============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.p12
+credentials.json
+secrets.*
+
+# ==============================================================================
+# Operating Systems
+# ==============================================================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.Trash-*
+
+# ==============================================================================
+# Editors & IDEs
+# ==============================================================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.iml
+.sublime-*
+
+# ==============================================================================
+# Node.js / Frontend / JavaScript / TypeScript
+# ==============================================================================
+node_modules/
+dist/
+build/
+out/
+.next/
+.nuxt/
+.svelte-kit/
+.astro/
+.turbo/
+.vercel/
+.cache/
+.parcel-cache/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==============================================================================
+# Python
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+.coverage
+htmlcov/
+
+# ==============================================================================
+# Java / Build Artifacts
+# ==============================================================================
+target/
+.gradle/
+*.class
+*.jar
+*.war
+*.ear
+*.hprof
+
+# ==============================================================================
+# Logs, Temp & Local Databases
+# ==============================================================================
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.sqlite
+*.sqlite3
+*.db
