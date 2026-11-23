@@ -155,6 +155,10 @@ const OFFICIAL_DOMAINS = [
   "bigbasket.com", "blinkit.com", "zepto.in", "airtel.in", "jio.com", "vi.in",
   "makemytrip.com", "goibibo.com", "uber.com", "olacabs.com", "urbancompany.com",
   "dominos.co.in", "decathlon.in", "bsesdelhi.com", "bescom.co.in", "tatapower.com",
+  "bseindia.com", "nseindia.com", "sebi.gov.in", "trai.gov.in", "dot.gov.in",
+  "github.com", "linkedin.com", "naukri.com", "internshala.com", "zerodha.com",
+  "groww.in", "cred.club", "jiocinema.com", "hotstar.com", "youtu.be",
+  "youtube.com", "forms.gle", "google.com",
 ];
 
 const BRAND_KEYWORDS = [
@@ -197,12 +201,15 @@ const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 const APK_RE = /(?:\.apk\b|(?:download|install).{0,25}(?:app|apk|file))/i;
 const REMOTE_APP_RE = /\b(?:anydesk|teamviewer|quicksupport|rustdesk|ammyy|screen\s*share)\b/i;
 const UPI_URI_RE = /upi:\/\/pay\?[^\s<>"']+/gi;
-const WA_TG_RE = /(?:wa\.me\/|chat\.whatsapp\.com\/|t\.me\/|\btelegram\b)/i;
+const WA_TG_RE = /(?:wa\.me\/|chat\.whatsapp\.com\/|t\.me\/|\b(?:join|contact|message|dm)\b.{0,20}\b(?:whatsapp|telegram)\b|\btelegram\s+(?:group|channel|task|hr|bot|link|id)\b)/i;
 const PHONE_CALLBACK_RE = /(?:\b(?:call|contact|whatsapp|helpline|dial)\b.{0,35}(?:\+91[-\s]?)?[6-9]\d{9}|(?:\+91[-\s]?)?[6-9]\d{9}.{0,35}\b(?:call|contact|whatsapp|helpline|dial)\b)/i;
 const TOLLFREE_RE = /(?:1800[-\s]?\d{3}[-\s]?\d{4}|\b1930\b)/;
 const CURRENCY_RE = /(?:(?:rs\.?|inr|₹)\s*(\d[\d,]*(?:\.\d+)?)|\b(\d+(?:\.\d+)?)\s*(lakh|crore|k)\b)/gi;
 const ASKS_OTP_RE = /\b(?:share|send|enter|tell|provide|verify|batao|bhejo)\b.{0,20}\b(?:otp|pin|cvv|mpin|password)\b/i;
 const OTP_DO_NOT_SHARE_RE = /\b(?:do\s*not|don'?t|never|mat|pls\s*do\s*not)\b.{0,20}\b(?:share|disclose|tell|batana)\b(?:\s.{0,20}\b(?:otp|pin|cvv|code|password)\b)?/i;
+const AWARENESS_PSA_RE = /\b(?:beware\s+(?:of|dealing)|unsolicited\s+tips|take\s+informed\s+decision|use\s+telecom\s+services\s+responsibly|official\s+and\s+legitimate|rbi\s+kehta\s+hai|report\s+cyber\s*fraud|cyber\s*dost|stay\s+safe\s+from\s+fraud)\b/i;
+const PHYSICAL_HANDOVER_RE = /\b(?:driver|trip|cab|ride|uber|ola|rapido|delivery\s*(?:boy|partner|agent|executive)|doorstep|at\s+the\s+gate|amazon\s+delivery|flipkart\s+delivery)\b/i;
+const UPI_VPA_RE = /\b[a-z0-9.\-_]{3,}@(?:ybl|okicici|okaxis|oksbi|okhdfcbank|paytm|ibl|axl|upi|apl)\b/i;
 const DLT_HEADER_RE = /\b[A-Z]{2}-[A-Z0-9]{5,6}(?:-[TSGP])?\b/;
 const DLT_TX_SUFFIX_RE = /\b[A-Z]{2}-[A-Z0-9]{5,6}-[TSG]\b/;
 const BANK_TX_RE = /\b(?:debited|credited|spent|withdrawn)\b.{0,40}\b(?:a\/c|acct|account|card)\b.{0,20}(?:x{1,4}\d{3,4}|\*{2,4}\d{3,4})/i;
@@ -308,8 +315,9 @@ export function extractForensics(norm) {
   if (brand_domain_mismatch && urls.length > 0) addTrigger(urls[0], "Brand-domain mismatch (non-official link)", "risk");
 
   const apkM = clean.match(APK_RE);
-  const has_apk_lure = apkM ? 1.0 : 0.0;
-  if (apkM) addTrigger(apkM[0], "Malicious APK / sideloading lure", "risk");
+  const negatedApk = /\b(?:avoid|never|do\s*not|don'?t)\b.{0,20}\b(?:download|install)/i.test(canon);
+  const has_apk_lure = apkM && !negatedApk ? 1.0 : 0.0;
+  if (has_apk_lure && apkM) addTrigger(apkM[0], "Malicious APK / sideloading lure", "risk");
 
   const remoteM = clean.match(REMOTE_APP_RE);
   const has_remote_access_app = remoteM ? 1.0 : 0.0;
@@ -319,12 +327,28 @@ export function extractForensics(norm) {
   const has_upi_uri = upi_payloads.length > 0 ? 1.0 : 0.0;
   if (upi_payloads.length > 0) addTrigger(upi_payloads[0].raw.slice(0, 48), "Direct upi://pay payment request URI", "risk");
 
+  const upiVpaM = clean.match(UPI_VPA_RE);
+  const has_upi_vpa = upiVpaM ? 1.0 : 0.0;
+
   const hasUpiMention = has_upi_uri > 0 || /\b(?:upi\s*id|upi\s*pin)\b/.test(canon);
   const hasReceiveLure = ["receive", "cashback", "refund", "credit", "prize", "won", "claim"].some((w) =>
     new RegExp(`\\b${w}\\b`).test(canon)
   );
-  const upi_collect_cashback_trap = hasUpiMention && hasReceiveLure ? 1.0 : 0.0;
-  if (upi_collect_cashback_trap && upi_payloads.length === 0) {
+  const urgentTransferCues = [
+    "accidentally", "mistakenly", "refund", "urgently", "urgent", "hospital",
+    "emergency", "upi is not working", "send rs", "send ₹", "transfer rs",
+    "right now", "return in", "cashback", "prize", "won", "claim",
+  ];
+  const hasUrgentTransferCue = urgentTransferCues.some((cue) => canon.includes(cue));
+  const bankTxPre = clean.match(BANK_TX_RE);
+  const isGenuineReceipt = Boolean(bankTxPre && BANK_TX_META_RE.test(clean)) || canon.includes("you received");
+  const isUpiSafetyPsa = /\b(?:never\s+need\s+to\s+enter|never\s+ask|not\s+required\s+to\s+receive|safety\s+tip|npci)\b/i.test(canon);
+  const urgentTransferTrap = has_upi_vpa > 0 && hasUrgentTransferCue && !isGenuineReceipt;
+
+  const upi_collect_cashback_trap = ((hasUpiMention && hasReceiveLure) || urgentTransferTrap) && !isUpiSafetyPsa ? 1.0 : 0.0;
+  if (urgentTransferTrap && upiVpaM) {
+    addTrigger(upiVpaM[0], "Urgent / unverified UPI VPA transfer request", "risk");
+  } else if (upi_collect_cashback_trap && upi_payloads.length === 0) {
     addTrigger("UPI / cashback", "UPI payment/PIN paired with receive/cashback claim", "risk");
   }
 
@@ -372,12 +396,22 @@ export function extractForensics(norm) {
   }
 
   const otpSafeM = canon.match(OTP_DO_NOT_SHARE_RE);
-  const has_otp_do_not_share = otpSafeM ? 1.0 : 0.0;
-  if (otpSafeM) addTrigger(otpSafeM[0], "Standard anti-fraud OTP warning", "safe");
-
+  const physicalM = canon.match(PHYSICAL_HANDOVER_RE);
   const asksOtpM = canon.match(ASKS_OTP_RE);
-  const asks_otp_or_pin = asksOtpM && !otpSafeM ? 1.0 : 0.0;
+  const asks_otp_or_pin = asksOtpM && !otpSafeM && !physicalM ? 1.0 : 0.0;
   if (asks_otp_or_pin && asksOtpM) addTrigger(asksOtpM[0], "Solicits OTP / PIN / CVV", "risk");
+
+  const awarenessM = canon.match(AWARENESS_PSA_RE);
+  const noMaliciousTraps =
+    has_shortener === 0 &&
+    has_apk_lure === 0 &&
+    has_suspicious_tld === 0 &&
+    brand_domain_mismatch === 0 &&
+    upi_collect_cashback_trap === 0 &&
+    asks_otp_or_pin === 0;
+  const has_otp_do_not_share = otpSafeM || (awarenessM && noMaliciousTraps) ? 1.0 : 0.0;
+  if (otpSafeM) addTrigger(otpSafeM[0], "Standard anti-fraud OTP warning", "safe");
+  else if (awarenessM && noMaliciousTraps) addTrigger(awarenessM[0], "Public cyber-safety / regulatory awareness advisory", "safe");
 
   const dltM = clean.match(DLT_HEADER_RE);
   const dlt_header = dltM ? dltM[0] : null;
@@ -397,7 +431,17 @@ export function extractForensics(norm) {
   if (has_delivery_template && delivM) addTrigger(delivM[0], "Genuine e-commerce/courier delivery pattern", "safe");
 
   const casualM = canon.match(CASUAL_HINGLISH_RE);
-  const has_casual_hinglish_chat = casualM && has_url === 0 && has_apk_lure === 0 && threat_authority_score === 0 ? 1.0 : 0.0;
+  const has_casual_hinglish_chat =
+    casualM &&
+    has_url === 0 &&
+    has_apk_lure === 0 &&
+    threat_authority_score === 0 &&
+    has_upi_vpa === 0 &&
+    upi_collect_cashback_trap === 0 &&
+    asks_otp_or_pin === 0 &&
+    has_indian_phone_callback === 0
+      ? 1.0
+      : 0.0;
   if (has_casual_hinglish_chat && casualM) addTrigger(casualM[0], "Informal Hinglish conversational marker", "safe");
 
   const obfuscation_count = Math.min(norm.obfuscations.length, 4) / 4.0;

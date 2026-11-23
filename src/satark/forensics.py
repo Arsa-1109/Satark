@@ -72,6 +72,10 @@ OFFICIAL_DOMAINS = frozenset({
     "bigbasket.com", "blinkit.com", "zepto.in", "airtel.in", "jio.com", "vi.in",
     "makemytrip.com", "goibibo.com", "uber.com", "olacabs.com", "urbancompany.com",
     "dominos.co.in", "decathlon.in", "bsesdelhi.com", "bescom.co.in", "tatapower.com",
+    "bseindia.com", "nseindia.com", "sebi.gov.in", "trai.gov.in", "dot.gov.in",
+    "github.com", "linkedin.com", "naukri.com", "internshala.com", "zerodha.com",
+    "groww.in", "cred.club", "jiocinema.com", "hotstar.com", "youtu.be",
+    "youtube.com", "forms.gle", "google.com",
 })
 
 BRAND_KEYWORDS = (
@@ -122,7 +126,10 @@ _IPV4_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
 _APK_RE = re.compile(r"(?:\.apk\b|(?:download|install).{0,25}(?:app|apk|file))", re.IGNORECASE)
 _REMOTE_APP_RE = re.compile(r"\b(?:anydesk|teamviewer|quicksupport|rustdesk|ammyy|screen\s*share)\b", re.IGNORECASE)
 _UPI_URI_RE = re.compile(r"upi://pay\?[^\s<>\"']+", re.IGNORECASE)
-_WA_TG_RE = re.compile(r"(?:wa\.me/|chat\.whatsapp\.com/|t\.me/|\btelegram\b)", re.IGNORECASE)
+_WA_TG_RE = re.compile(
+    r"(?:wa\.me/|chat\.whatsapp\.com/|t\.me/|\b(?:join|contact|message|dm)\b.{0,20}\b(?:whatsapp|telegram)\b|\btelegram\s+(?:group|channel|task|hr|bot|link|id)\b)",
+    re.IGNORECASE,
+)
 _PHONE_CALLBACK_RE = re.compile(
     r"(?:\b(?:call|contact|whatsapp|helpline|dial)\b.{0,35}(?:\+91[\-\s]?)?[6-9]\d{9}|(?:\+91[\-\s]?)?[6-9]\d{9}.{0,35}\b(?:call|contact|whatsapp|helpline|dial)\b)",
     re.IGNORECASE,
@@ -131,6 +138,18 @@ _TOLLFREE_RE = re.compile(r"(?:1800[\-\s]?\d{3}[\-\s]?\d{4}|\b1930\b)")
 _CURRENCY_RE = re.compile(r"(?:(?:rs\.?|inr|₹)\s*(\d[\d,]*(?:\.\d+)?)|\b(\d+(?:\.\d+)?)\s*(lakh|crore|k)\b)", re.IGNORECASE)
 _ASKS_OTP_RE = re.compile(r"\b(?:share|send|enter|tell|provide|verify|batao|bhejo)\b.{0,20}\b(?:otp|pin|cvv|mpin|password)\b", re.IGNORECASE)
 _OTP_DO_NOT_SHARE_RE = re.compile(r"\b(?:do\s*not|don'?t|never|mat|pls\s*do\s*not)\b.{0,20}\b(?:share|disclose|tell|batana)\b(?:\s.{0,20}\b(?:otp|pin|cvv|code|password)\b)?", re.IGNORECASE)
+_AWARENESS_PSA_RE = re.compile(
+    r"\b(?:beware\s+(?:of|dealing)|unsolicited\s+tips|take\s+informed\s+decision|use\s+telecom\s+services\s+responsibly|official\s+and\s+legitimate|rbi\s+kehta\s+hai|report\s+cyber\s*fraud|cyber\s*dost|stay\s+safe\s+from\s+fraud)\b",
+    re.IGNORECASE,
+)
+_PHYSICAL_HANDOVER_RE = re.compile(
+    r"\b(?:driver|trip|cab|ride|uber|ola|rapido|delivery\s*(?:boy|partner|agent|executive)|doorstep|at\s+the\s+gate|amazon\s+delivery|flipkart\s+delivery)\b",
+    re.IGNORECASE,
+)
+_UPI_VPA_RE = re.compile(
+    r"\b[a-z0-9.\-_]{3,}@(?:ybl|okicici|okaxis|oksbi|okhdfcbank|paytm|ibl|axl|upi|apl)\b",
+    re.IGNORECASE,
+)
 _DLT_HEADER_RE = re.compile(r"\b[A-Z]{2}-[A-Z0-9]{5,6}(?:-[TSGP])?\b")
 _DLT_TX_SUFFIX_RE = re.compile(r"\b[A-Z]{2}-[A-Z0-9]{5,6}-[TSG]\b")
 _BANK_TX_RE = re.compile(
@@ -264,8 +283,9 @@ def extract_forensics(norm: NormalizedResult) -> ForensicsResult:
         add_trigger(urls[0], "Brand-domain mismatch (non-official link)", "risk")
 
     apk_m = _APK_RE.search(clean)
-    has_apk_lure = 1.0 if apk_m else 0.0
-    if apk_m:
+    negated_apk = bool(re.search(r"\b(?:avoid|never|do\s*not|don'?t)\b.{0,20}\b(?:download|install)", canon))
+    has_apk_lure = 1.0 if (apk_m and not negated_apk) else 0.0
+    if has_apk_lure and apk_m:
         add_trigger(apk_m.group(0), "Malicious APK / sideloading lure", "risk")
 
     remote_m = _REMOTE_APP_RE.search(clean)
@@ -278,10 +298,26 @@ def extract_forensics(norm: NormalizedResult) -> ForensicsResult:
     if upi_payloads:
         add_trigger(upi_payloads[0]["raw"][:48], "Direct upi://pay payment request URI", "risk")
 
+    upi_vpa_m = _UPI_VPA_RE.search(clean)
+    has_upi_vpa = 1.0 if upi_vpa_m else 0.0
+
     has_upi_mention = has_upi_uri > 0 or bool(re.search(r"\b(?:upi\s*id|upi\s*pin)\b", canon))
     has_receive_lure = any(re.search(r"\b" + w + r"\b", canon) for w in ("receive", "cashback", "refund", "credit", "prize", "won", "claim"))
-    upi_collect_cashback_trap = 1.0 if (has_upi_mention and has_receive_lure) else 0.0
-    if upi_collect_cashback_trap and not upi_payloads:
+    urgent_transfer_cues = (
+        "accidentally", "mistakenly", "refund", "urgently", "urgent", "hospital",
+        "emergency", "upi is not working", "send rs", "send ₹", "transfer rs",
+        "right now", "return in", "cashback", "prize", "won", "claim",
+    )
+    has_urgent_transfer_cue = any(cue in canon for cue in urgent_transfer_cues)
+    bank_tx_m_pre = _BANK_TX_RE.search(clean)
+    is_genuine_receipt = bool(bank_tx_m_pre and _BANK_TX_META_RE.search(clean)) or ("you received" in canon)
+    is_upi_safety_psa = bool(re.search(r"\b(?:never\s+need\s+to\s+enter|never\s+ask|not\s+required\s+to\s+receive|safety\s+tip|npci)\b", canon))
+    urgent_transfer_trap = bool(has_upi_vpa > 0 and has_urgent_transfer_cue and not is_genuine_receipt)
+
+    upi_collect_cashback_trap = 1.0 if (((has_upi_mention and has_receive_lure) or urgent_transfer_trap) and not is_upi_safety_psa) else 0.0
+    if urgent_transfer_trap and upi_vpa_m:
+        add_trigger(upi_vpa_m.group(0), "Urgent / unverified UPI VPA transfer request", "risk")
+    elif upi_collect_cashback_trap and not upi_payloads:
         add_trigger("UPI / cashback", "UPI payment/PIN paired with receive/cashback claim", "risk")
 
     phone_m = _PHONE_CALLBACK_RE.search(clean)
@@ -329,14 +365,26 @@ def extract_forensics(norm: NormalizedResult) -> ForensicsResult:
                 break
 
     otp_safe_m = _OTP_DO_NOT_SHARE_RE.search(canon)
-    has_otp_do_not_share = 1.0 if otp_safe_m else 0.0
-    if otp_safe_m:
-        add_trigger(otp_safe_m.group(0), "Standard anti-fraud OTP warning", "safe")
-
+    physical_m = _PHYSICAL_HANDOVER_RE.search(canon)
     asks_otp_m = _ASKS_OTP_RE.search(canon)
-    asks_otp_or_pin = 1.0 if (asks_otp_m and not otp_safe_m) else 0.0
+    asks_otp_or_pin = 1.0 if (asks_otp_m and not otp_safe_m and not physical_m) else 0.0
     if asks_otp_or_pin and asks_otp_m:
         add_trigger(asks_otp_m.group(0), "Solicits OTP / PIN / CVV", "risk")
+
+    awareness_m = _AWARENESS_PSA_RE.search(canon)
+    no_malicious_traps = (
+        has_shortener == 0.0
+        and has_apk_lure == 0.0
+        and has_suspicious_tld == 0.0
+        and brand_domain_mismatch == 0.0
+        and upi_collect_cashback_trap == 0.0
+        and asks_otp_or_pin == 0.0
+    )
+    has_otp_do_not_share = 1.0 if (otp_safe_m or (awareness_m and no_malicious_traps)) else 0.0
+    if otp_safe_m:
+        add_trigger(otp_safe_m.group(0), "Standard anti-fraud OTP warning", "safe")
+    elif awareness_m and no_malicious_traps:
+        add_trigger(awareness_m.group(0), "Public cyber-safety / regulatory awareness advisory", "safe")
 
     dlt_m = _DLT_HEADER_RE.search(clean)
     dlt_header = dlt_m.group(0) if dlt_m else None
@@ -365,6 +413,10 @@ def extract_forensics(norm: NormalizedResult) -> ForensicsResult:
         and has_url == 0.0
         and has_apk_lure == 0.0
         and threat_authority_score == 0.0
+        and has_upi_vpa == 0.0
+        and upi_collect_cashback_trap == 0.0
+        and asks_otp_or_pin == 0.0
+        and has_indian_phone_callback == 0.0
     ) else 0.0
     if has_casual_hinglish_chat and casual_m:
         add_trigger(casual_m.group(0), "Informal Hinglish conversational marker", "safe")
