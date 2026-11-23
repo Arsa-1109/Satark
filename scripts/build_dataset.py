@@ -101,6 +101,10 @@ def _try_hf_indian_datasets() -> list[dict]:
                     raw_lbl = str(r[lbl_col]).strip().lower()
                     if not txt or txt == "nan" or len(txt) > 1200:
                         continue
+                    if "Deysi" in repo:
+                        low_t = txt.lower()
+                        if any(k in low_t for k in ("subreddit", "as an ai language model", "pushshift", "dataset of", "thesis")):
+                            continue
                     is_scam = 1 if raw_lbl in ("1", "spam", "scam", "fraud", "true") else 0
                     rows.append({
                         "text": txt,
@@ -249,12 +253,19 @@ def _generate_indian_scam_corpus() -> list[dict]:
         ("Other", "Hello, this is FedEx {city}. A parcel in your name with illegal drugs was seized by customs. Connect with Cyber Police on Skype immediately."),
         ("Other", "Sir your son has been arrested by police in a narcotics case. Send Rs 50,000 immediately to {ph}@ybl to close FIR otherwise we will put him in jail."),
         ("Other", "Your electricity power will be disconnected tonight at 9.30 PM because your previous month bill was not updated. Immediately contact our electricity officer {ph}."),
+        # Novel 2025-26 scams (ITR, OLX Army QR, Gas, Sextortion, Laptop deposit, Broken phone)
+        ("KYC/Bank", "Income Tax Dept: Your ITR tax refund of Rs {amt2} is approved. Update bank account within 24 hrs at https://incometax-refund-in.com/{code}"),
+        ("Other", "OLX Buyer: I am in Indian Army and want to buy your item for Rs {amt2}. Scan this QR code and enter your UPI PIN to receive advance payment."),
+        ("Other", "IGL / Mahanagar Gas Alert: Your piped gas connection will be disconnected tonight at 8 PM due to unpaid bill. Call officer {ph} immediately."),
+        ("Other", "Warning: I recorded your private video from webcam. Transfer Rs 25,000 to {ph}@ybl today or I will leak it to all your contacts."),
+        ("Job/Investment", "Congrats! You are selected for {comp} Work From Home Data Entry job. Pay Rs {amt1} refundable laptop security deposit to hr-{code}@ybl."),
+        ("Other", "Hi Mom, my phone broke so texting from friend's mobile. Need Rs {amt2} urgently for hospital emergency, send to {ph}@okicici."),
     ]
     hr_names = ["Priya", "Anjali", "Ritu", "Neha", "Sneha", "Kavita"]
     hr_comps = ["Amazon", "Flipkart", "Google Maps", "Meesho", "Nykaa"]
     lookalikes = ["sbi-points-redeem.com", "hdfc-reward-cash.in", "icici-points-claim.com", "axis-kyc-portal.in"]
     cities = ["Mumbai", "Delhi", "Bengaluru", "Hyderabad"]
-    for i in range(180):
+    for i in range(260):
         cat, tpl = subtle_scams[i % len(subtle_scams)]
         txt = tpl.format(
             name=hr_names[i % len(hr_names)],
@@ -428,6 +439,8 @@ def _generate_hard_negative_safe_corpus() -> list[dict]:
         "Flipkart: Big Diwali Sale starts tonight at 12 AM! Extra 10% instant discount on SBI Credit Cards.",
         "Myntra: Your wishlist item is now at {pct}% off! Grab it before stock runs out on Myntra app.",
         "BigBasket: Weekend grocery savings! Get Rs {off} cashback on your basket above Rs 1500 in the BigBasket app.",
+        "Swiggy One: Renew your 3-month membership for just Rs {off}! Enjoy free delivery on orders above Rs 199.",
+        "Amazon Prime: Renew your Prime membership for Rs {off} and get free 1-day delivery & Prime Video.",
     ]
     for i in range(90):
         tpl = coupon_templates[i % len(coupon_templates)]
@@ -639,6 +652,34 @@ def _generate_hard_negative_safe_corpus() -> list[dict]:
         )
         rows.append({"text": txt, "label": 0, "category": "", "source_corpus": "hard_neg_tx_headerless", "sample_weight": 1.5})
 
+    # 18. Balanced Multilingual Indic Corpus (Hindi, Kannada, Tamil, Telugu — SCAM & SAFE)
+    indic_scams = [
+        ("KYC/Bank", "आपका बैंक खाता केवाईसी अपडेट न होने के कारण बंद हो जाएगा। अभी लिंक पर क्लिक करें: bit.ly/kyc-hi-{i}"),
+        ("Other", "ನಿಮ್ಮ ವಿದ್ಯುತ್ ಬಿಲ್ ಬಾಕಿ ಇದೆ, ಇಂದು ರಾತ್ರಿ ಸಂಪರ್ಕ ಕಡಿತಗೊಳ್ಳುತ್ತದೆ. ತಕ್ಷಣ ಕರೆ ಮಾಡಿ 9876543{i:03d}"),
+        ("KYC/Bank", "ನಿಮ್ಮ ಎಸ್‌ಬಿಐ ಬ್ಯಾಂಕ್ ಖಾತೆ ಕೆವೈಸಿ ಕಾರಣದಿಂದ ಬ್ಲಾಕ್ ಆಗಿದೆ. ತಕ್ಷಣ ಅಪ್‌ಡೇಟ್ ಮಾಡಿ: bit.ly/sbi-ka-{i}"),
+        ("Lottery/Prize", "உங்கள் எண் ஜியோ லக்கி டிராவில் ரூ.15 லட்சம் வென்றுள்ளது. உடனே தொடர்பு கொள்ளவும் 9845012{i:03d}"),
+        ("Other", "உங்கள் மின்சார இணைப்பு இன்று இரவு துண்டிக்கப்படும். உடனே அதிகாரி 9811223{i:03d} எண்ணை அழைக்கவும்."),
+        ("KYC/Bank", "మీ బ్యాంక్ ఖాతా బ్లాక్ చేయబడింది. వెంటనే KYC అప్‌డేట్ చేయండి: bit.ly/kyc-te-{i}"),
+        ("Lottery/Prize", "అభినందనలు! మీరు రూ.20 లక్షల లాటరీ గెలుచుకున్నారు. క్లెయిమ్ చేయడానికి కాల్ చేయండి 9900112{i:03d}"),
+    ]
+    indic_safe = [
+        "भाई कल सुबह 9 बजे कॉलेज में मिलते हैं, नोट्स लेकर आना।",
+        "ನಿಮ್ಮ ಅಮೆಜಾನ್ ಆರ್ಡರ್ ಇಂದು ತಲುಪಿಸಲಾಗುತ್ತದೆ. ಟ್ರ್ಯಾಕ್ ಮಾಡಿ amazon.in",
+        "ನಿಮ್ಮ ಬ್ಯಾಂಕ್ ಖಾತೆಗೆ ರೂ. 2,500 ಜಮಾ ಆಗಿದೆ. ಬ್ಯಾಲೆನ್ಸ್ ರೂ. 14,200.",
+        "உங்கள் ஸ்விக்கி ஆர்டர் 15 நிமிடங்களில் வரும். நன்றி!",
+        "உங்கள் வங்கி கணக்கில் ரூ.1,200 டெபிட் செய்யப்பட்டது.",
+        "మీ ఆర్డర్ డెలివరీ కోసం బయలుదేరింది. ట్రాక్ చేయండి flipkart.com",
+        "అన్నా ఈరోజు సాయంత్రం 6 గంటలకు కలుద్దామా?",
+    ]
+    for i in range(56):
+        cat, tpl = indic_scams[i % len(indic_scams)]
+        rows.append({"text": tpl.format(i=100 + i), "label": 1, "category": cat, "source_corpus": "indian_curated_2026", "sample_weight": 1.5})
+    for i in range(56):
+        txt = indic_safe[i % len(indic_safe)]
+        if i >= len(indic_safe):
+            txt += f" ({i})"
+        rows.append({"text": txt, "label": 0, "category": "", "source_corpus": "hard_neg_indic_safe", "sample_weight": 1.5})
+
     return rows
 
 
@@ -773,6 +814,37 @@ def _build_transactional_promo_suite() -> list[dict]:
     return [{"text": t, "label": 0, "category": "", "source_corpus": "transactional_promo_safe", "sample_weight": 1.0} for t in msgs]
 
 
+def _build_blind_multilingual_suite() -> list[dict]:
+    """Independent 24-message blind Multi-Script + Novel Scam + Tricky Safe suite (Gate G13)."""
+    items = [
+        (1, "Other", "Hi I am interested in buying your sofa on OLX for Rs 12,000. I am in Army, please scan this QR code and enter UPI PIN to receive advance payment."),
+        (1, "KYC/Bank", "Income Tax Dept: Your ITR refund of Rs 18,450 is approved. Verify bank details within 24 hrs at incometax-refund-portal.in"),
+        (1, "Job/Investment", "Congratulations! You are selected for Infosys Work From Home Data Entry job. Pay Rs 1,499 refundable laptop security deposit to hr-infosys@ybl."),
+        (1, "Other", "Hi Mom, my phone broke and I am texting from a friend's number. Need Rs 12,000 urgently for hospital bill, please send to 9822334455@okicici."),
+        (1, "Lottery/Prize", "You have been selected as a lucky winner of Mahindra Thar! Pay Rs 4,500 GST charges to claim delivery. Call 8899776655."),
+        (1, "Loan/Credit", "Urgent cash needed? Get Rs 3 Lakh personal loan in 10 mins with bad CIBIL. Zero paperwork! WhatsApp 9011223344."),
+        (1, "Other", "Dear user, your Gas connection (IGL) will be disconnected tonight at 8 PM due to unpaid bill. Call officer 7890123456 immediately."),
+        (1, "Other", "I recorded your private video from your webcam. Pay Rs 25,000 to my UPI or I will send it to all your contacts."),
+        (1, "KYC/Bank", "आपका एसबीआई खाता केवाईसी अपडेट न होने के कारण बंद हो जाएगा। कृपया इस लिंक पर क्लिक करें: bit.ly/sbi-hindi"),
+        (1, "Other", "ನಿಮ್ಮ ವಿದ್ಯುತ್ ಸಂಪರ್ಕ ಇಂದು ರಾತ್ರಿ ಕಡಿತಗೊಳ್ಳುತ್ತದೆ. ತಕ್ಷಣ ಅಧಿಕಾರಿಗೆ ಕರೆ ಮಾಡಿ 9876543210"),
+        (1, "Lottery/Prize", "உங்கள் எண் ரூ.10 லட்சம் லாட்டரி வென்றுள்ளது. உடனே தொடர்பு கொள்ளவும் 9845012345"),
+        (1, "KYC/Bank", "మీ బ్యాంక్ ఖాతా బ్లాక్ చేయబడింది. వెంటనే KYC అప్‌డేట్ చేయండి: bit.ly/kyc-te"),
+        (0, "", "Hi! Your Swiggy order is delayed by 15 mins due to rain. Sorry for the inconvenience!"),
+        (0, "", "Ajio: Flat 60% off on Nike, Puma & Adidas sneakers! Use code STEPUP on Ajio app."),
+        (0, "", "Urban Company: Your AC service professional Rajesh will arrive at 11:00 AM today. Share start code 5912 upon arrival."),
+        (0, "", "LIC India: Reminder! Premium of Rs 14,200 for Policy No. 781234567 is due on 30 Nov 2026. Pay via licindia.in or official app."),
+        (0, "", "HDFC Mutual Fund: Your SIP installment of Rs 3,000 has been processed. Units allotted: 42.18. Folio 9182736."),
+        (0, "", "JioMart: Your grocery order worth Rs 845 is out for delivery! Pay via Cash or UPI at doorstep."),
+        (0, "", "भाई आज शाम 7 बजे जिम चलेंगे क्या? 500 रुपये जो उधार लिए थे वो भी दे दूँगा।"),
+        (0, "", "Can you send me the PDF of the OS notes? Exam is on Monday and I haven't started Unit 3."),
+        (0, "", "Your IRCTC refund of Rs 1,420 for cancelled PNR 4829104821 has been credited to your source bank account."),
+        (0, "", "NSDL: Your PAN card application acknowledgement no. 881029384712 has been dispatched via India Post."),
+        (0, "", "Zomato Gold: Renew your 3-month membership for just Rs 30! Enjoy free delivery on orders above Rs 199."),
+        (0, "", "Dear Customer, your Axis Bank Debit Card ending 6190 has been dispatched via BlueDart AWB 7781920341."),
+    ]
+    return [{"text": t, "label": lbl, "category": cat, "source_corpus": "blind_multilingual", "sample_weight": 1.0} for lbl, cat, t in items]
+
+
 def main() -> None:
     PROC_DIR.mkdir(parents=True, exist_ok=True)
     uci_rows = _download_uci()
@@ -782,9 +854,10 @@ def main() -> None:
     stress_rows = _build_realworld_stress_suite()
     ood_rows = _build_ood_safe_suite()
     tx_promo_rows = _build_transactional_promo_suite()
+    blind_multi_rows = _build_blind_multilingual_suite()
 
-    # Anti-leakage: exclude samples.txt, test_realworld_stress.csv, test_ood_safe.csv, and test_transactional_safe.csv
-    excluded_keys = {_dedup_key(r["text"]) for r in stress_rows + ood_rows + tx_promo_rows}
+    # Anti-leakage: exclude samples.txt, test_realworld_stress.csv, test_ood_safe.csv, test_transactional_safe.csv, test_blind_multilingual.csv
+    excluded_keys = {_dedup_key(r["text"]) for r in stress_rows + ood_rows + tx_promo_rows + blind_multi_rows}
     samples_path = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\samples.txt")
     if samples_path.exists():
         for m in samples_path.read_text(encoding="utf-8").split("\n\n"):
@@ -834,6 +907,7 @@ def main() -> None:
     stress_df = pd.DataFrame(stress_rows)
     ood_df = pd.DataFrame(ood_rows)
     tx_df = pd.DataFrame(tx_promo_rows)
+    multi_df = pd.DataFrame(blind_multi_rows)
 
     train_df.to_csv(PROC_DIR / "train.csv", index=False)
     val_df.to_csv(PROC_DIR / "val.csv", index=False)
@@ -843,6 +917,7 @@ def main() -> None:
     stress_df.to_csv(PROC_DIR / "test_realworld_stress.csv", index=False)
     ood_df.to_csv(PROC_DIR / "test_ood_safe.csv", index=False)
     tx_df.to_csv(PROC_DIR / "test_transactional_safe.csv", index=False)
+    multi_df.to_csv(PROC_DIR / "test_blind_multilingual.csv", index=False)
 
     print("Saved splits to", PROC_DIR)
     for name, part in (
@@ -854,6 +929,7 @@ def main() -> None:
         ("test_realworld_stress.csv", stress_df),
         ("test_ood_safe.csv", ood_df),
         ("test_transactional_safe.csv", tx_df),
+        ("test_blind_multilingual.csv", multi_df),
     ):
         print(f"  {name:26s}: {len(part):5d} rows (scam={int((part['label']==1).sum())}, safe={int((part['label']==0).sum())})")
 

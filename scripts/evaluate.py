@@ -61,6 +61,7 @@ def evaluate_mode(
     stress_df: pd.DataFrame,
     ood_df: pd.DataFrame,
     tx_df: pd.DataFrame,
+    multi_df: pd.DataFrame,
     force_lite: bool,
 ) -> tuple[dict, list[dict]]:
     # 1. Unseen test
@@ -142,6 +143,15 @@ def evaluate_mode(
             tx_fp += 1
     tx_fpr_pct = (tx_fp / max(len(tx_df), 1)) * 100.0
 
+    # 7. Blind Multilingual + Novel Scam + Tricky Safe Suite (Gate G13)
+    multi_ok = 0
+    for _, row in multi_df.iterrows():
+        res = engine.analyze(str(row["text"]), force_lite=force_lite)
+        pred = 1 if res["verdict"] == "SCAM" else 0
+        if pred == int(row["label"]):
+            multi_ok += 1
+    multi_acc = multi_ok / max(len(multi_df), 1)
+
     median_ms = float(statistics.median(latencies[5:])) if len(latencies) > 10 else float(statistics.median(latencies))
 
     metrics = {
@@ -164,6 +174,9 @@ def evaluate_mode(
         "transactional_fpr_pct": round(tx_fpr_pct, 2),
         "transactional_fp_count": tx_fp,
         "transactional_total": len(tx_df),
+        "blind_multilingual_accuracy": round(multi_acc, 4),
+        "blind_multilingual_correct": multi_ok,
+        "blind_multilingual_total": len(multi_df),
     }
     return metrics, curve
 
@@ -176,12 +189,13 @@ def main() -> None:
     stress_df = pd.read_csv(DATA_PROC / "test_realworld_stress.csv")
     ood_df = pd.read_csv(DATA_PROC / "test_ood_safe.csv")
     tx_df = pd.read_csv(DATA_PROC / "test_transactional_safe.csv")
+    multi_df = pd.read_csv(DATA_PROC / "test_blind_multilingual.csv")
 
     engine = SatarkEngine()
     print("Evaluating Full ONNX Hybrid...")
-    full_metrics, full_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, force_lite=False)
+    full_metrics, full_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, multi_df, force_lite=False)
     print("Evaluating Lite Fallback...")
-    lite_metrics, lite_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, force_lite=True)
+    lite_metrics, lite_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, multi_df, force_lite=True)
 
     summary = {
         "full_onnx_hybrid": full_metrics,
@@ -196,6 +210,7 @@ def main() -> None:
             "G10_realworld_stress_ge_92pct": full_metrics["realworld_accuracy"] >= 0.92 and full_metrics["realworld_safe_fp"] <= 1,
             "G11_ood_safe_fpr_le_5pct": full_metrics["ood_safe_fpr_pct"] <= 5.0 and lite_metrics["ood_safe_fpr_pct"] <= 5.0,
             "G12_transactional_promo_fpr_le_4pct": full_metrics["transactional_fpr_pct"] <= 4.0 and lite_metrics["transactional_fpr_pct"] <= 4.0,
+            "G13_blind_multilingual_ge_92pct": full_metrics["blind_multilingual_accuracy"] >= 0.92,
         },
         "calibration_curve": full_curve,
     }

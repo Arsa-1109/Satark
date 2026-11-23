@@ -51,7 +51,7 @@ def _fit_platt(logits: np.ndarray, y_true: np.ndarray, weights: np.ndarray | Non
     return float(platt.coef_[0][0]), float(platt.intercept_[0])
 
 
-def _select_threshold(probs: np.ndarray, y_true: np.ndarray, max_fpr: float = 0.010) -> float:
+def _select_threshold(probs: np.ndarray, y_true: np.ndarray, max_fpr: float = 0.006) -> float:
     """Pick highest-F1 threshold on val.csv with FPR <= max_fpr."""
     best_t = 0.50
     best_f1 = -1.0
@@ -167,7 +167,7 @@ def main() -> None:
     va_logits_lite = lr_lite_a.decision_function(x_va_sparse)
     pa_lite, pb_lite = _fit_platt(va_logits_lite, y_va, w_va)
     va_probs_lite = 1.0 / (1.0 + np.exp(-(pa_lite * va_logits_lite + pb_lite)))
-    th_lite = _select_threshold(va_probs_lite, y_va, max_fpr=0.010)
+    th_lite = _select_threshold(va_probs_lite, y_va, max_fpr=0.006)
     print(f"Selected Lite Stage A threshold={th_lite}")
     joblib.dump(
         {"clf": lr_lite_a, "platt_a": pa_lite, "platt_b": pb_lite, "threshold": th_lite},
@@ -244,7 +244,7 @@ def main() -> None:
         loss = float(log_loss(y_va, probs, sample_weight=w_va))
         if loss < best_loss:
             best_alpha, best_loss, pa_full, pb_full, best_probs_full = cand_alpha, loss, pa, pb, probs
-    th_full = _select_threshold(best_probs_full, y_va, max_fpr=0.010)
+    th_full = _select_threshold(best_probs_full, y_va, max_fpr=0.006)
     print(f"Selected Full Stage A blend alpha={best_alpha}, threshold={th_full} (val log_loss={best_loss:.4f})")
 
     joblib.dump(

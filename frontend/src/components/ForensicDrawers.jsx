@@ -1,16 +1,25 @@
-import { useState } from "react";
-import { Layers, Link2, Swords, FileWarning, Copy, Check } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Layers, Link2, Swords, FileWarning, Copy, Check, PhoneCall, Eye, EyeOff } from "lucide-react";
 import { cn } from "../utils/cn";
+import { defangUrl, classifyUrlRisk } from "../utils/urlDefang";
 
-export function ForensicDrawers({ result, mutationData }) {
+export function ForensicDrawers({ result, mutationData, requestedTab, requestedTabNonce, drawerRef }) {
   const [tab, setTab] = useState("xray");
   const [copied, setCopied] = useState(false);
+  const [showRawUrls, setShowRawUrls] = useState(false);
+
+  useEffect(() => {
+    if (requestedTab) {
+      setTab(requestedTab);
+    }
+  }, [requestedTab, requestedTabNonce]);
 
   if (!result) return null;
 
   const pillars = result.pillars || {};
   const urls = result.forensics?.urls || [];
   const upis = result.forensics?.upi_payloads || [];
+  const triggers = result.forensics?.triggers || [];
   const draft = result.report_draft_1930;
 
   const tabs = [
@@ -30,8 +39,12 @@ export function ForensicDrawers({ result, mutationData }) {
   };
 
   return (
-    <section className="rounded-lg border border-[#E4E4E0] bg-white">
-      <div className="flex flex-wrap border-b border-[#E4E4E0] px-2 pt-2">
+    <section ref={drawerRef} className="rounded-xl border border-[#E4E4E0] bg-white">
+      <div
+        role="tablist"
+        aria-label="Forensic breakdown"
+        className="flex flex-wrap border-b border-[#E4E4E0] px-2 pt-2"
+      >
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = activeTab === t.id;
@@ -39,9 +52,11 @@ export function ForensicDrawers({ result, mutationData }) {
             <button
               key={t.id}
               type="button"
+              role="tab"
+              aria-selected={active}
               onClick={() => setTab(t.id)}
               className={cn(
-                "inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition-colors duration-150",
+                "inline-flex min-h-[44px] items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-semibold transition-colors duration-150 sm:min-h-[38px]",
                 active
                   ? "border-[#111111] text-[#111111]"
                   : "border-transparent text-[#52525B] hover:text-[#111111]"
@@ -97,12 +112,45 @@ export function ForensicDrawers({ result, mutationData }) {
                 <p className="mt-2 text-xs font-medium text-[#C81E1E]">{u.risk_note}</p>
               </div>
             ))}
-            {urls.map((url, i) => (
-              <div key={i} className="flex items-center justify-between rounded border border-[#E4E4E0] bg-[#F7F7F5] px-3 py-2">
-                <span className="font-mono-tabular truncate text-xs text-[#111111]">{url}</span>
-                <span className="ml-2 shrink-0 text-[11px] font-semibold text-[#52525B]">Extracted URL</span>
+            {urls.length > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-[#52525B]">
+                  Links are defanged by default so they cannot be opened accidentally.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowRawUrls((v) => !v)}
+                  className="inline-flex min-h-[32px] items-center gap-1 rounded border border-[#E4E4E0] bg-[#F7F7F5] px-2 py-1 text-[11px] font-semibold text-[#111111]"
+                >
+                  {showRawUrls ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                  {showRawUrls ? "Defang" : "Show raw"}
+                </button>
               </div>
-            ))}
+            )}
+            {urls.map((url, i) => {
+              const risk = classifyUrlRisk(url, triggers);
+              const badgeTone =
+                risk.tone === "risk"
+                  ? "border-[#C81E1E]/30 bg-[#C81E1E]/10 text-[#C81E1E]"
+                  : risk.tone === "warn"
+                  ? "border-[#B45309]/30 bg-[#B45309]/10 text-[#B45309]"
+                  : risk.tone === "safe"
+                  ? "border-[#047857]/30 bg-[#047857]/10 text-[#047857]"
+                  : "border-[#E4E4E0] bg-white text-[#52525B]";
+              return (
+                <div
+                  key={i}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded border border-[#E4E4E0] bg-[#F7F7F5] px-3 py-2"
+                >
+                  <span className="font-mono-tabular break-all text-xs text-[#111111]">
+                    {showRawUrls ? url : defangUrl(url)}
+                  </span>
+                  <span className={cn("shrink-0 rounded border px-2 py-0.5 text-[11px] font-semibold", badgeTone)}>
+                    {risk.label}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -137,23 +185,35 @@ export function ForensicDrawers({ result, mutationData }) {
         )}
 
         {activeTab === "report" && draft && (
-          <div>
-            <div className="mb-2 flex items-center justify-between">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-semibold text-[#111111]">
                 PII-Redacted Incident Draft (OTP / Aadhaar / PAN / Account Masked)
               </span>
-              <button
-                type="button"
-                onClick={handleCopyDraft}
-                className="inline-flex items-center gap-1 rounded border border-[#E4E4E0] bg-[#F7F7F5] px-2.5 py-1 text-xs font-semibold text-[#111111] hover:bg-[#EAEAE5]"
-              >
-                {copied ? <Check className="size-3.5 text-[#047857]" /> : <Copy className="size-3.5" />}
-                {copied ? "Copied" : "Copy Draft"}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href="tel:1930"
+                  className="inline-flex min-h-[36px] items-center gap-1 rounded border border-[#C81E1E]/40 bg-[#C81E1E]/10 px-2.5 py-1 text-xs font-semibold text-[#C81E1E]"
+                >
+                  <PhoneCall className="size-3.5" />
+                  Call 1930
+                </a>
+                <button
+                  type="button"
+                  onClick={handleCopyDraft}
+                  className="inline-flex min-h-[36px] items-center gap-1 rounded border border-[#E4E4E0] bg-[#F7F7F5] px-2.5 py-1 text-xs font-semibold text-[#111111] hover:bg-[#EAEAE5]"
+                >
+                  {copied ? <Check className="size-3.5 text-[#047857]" /> : <Copy className="size-3.5" />}
+                  {copied ? "Copied" : "Copy Draft"}
+                </button>
+              </div>
             </div>
             <pre className="font-mono-tabular overflow-x-auto rounded border border-[#E4E4E0] bg-[#F7F7F5] p-3 text-xs leading-relaxed text-[#111111]">
               {draft}
             </pre>
+            <p className="text-[11px] text-[#52525B]">
+              Submit this draft at <span className="font-semibold text-[#111111]">sancharsaathi.gov.in (Chakshu)</span> for suspected fraud SMS/calls, or <span className="font-semibold text-[#111111]">cybercrime.gov.in</span> / helpline <span className="font-semibold text-[#111111]">1930</span> if money was lost.
+            </p>
           </div>
         )}
       </div>

@@ -63,7 +63,9 @@ class MutateRequest(BaseModel):
 
 
 class ClipboardToggleRequest(BaseModel):
-    enabled: bool
+    enabled: bool | None = None
+    only_alert_scam: bool | None = None
+    smart_filter: bool | None = None
 
 
 class OfflineAuditRequest(BaseModel):
@@ -82,6 +84,8 @@ def health() -> dict:
         "model_sha256": engine.model_sha256,
         "clipboard_supported": clipboard.supported,
         "clipboard_enabled": clipboard.enabled,
+        "clipboard_only_alert_scam": clipboard.only_alert_scam,
+        "clipboard_smart_filter": clipboard.smart_filter,
     }
 
 
@@ -106,8 +110,11 @@ def mutate(req: MutateRequest) -> dict:
 
 @app.post("/api/clipboard/toggle")
 def toggle_clipboard(req: ClipboardToggleRequest) -> dict:
-    enabled = clipboard.set_enabled(req.enabled)
-    return {"enabled": enabled, "supported": clipboard.supported}
+    return clipboard.set_config(
+        enabled=req.enabled,
+        only_alert_scam=req.only_alert_scam,
+        smart_filter=req.smart_filter,
+    )
 
 
 @app.get("/api/clipboard/stream")
@@ -116,12 +123,20 @@ async def clipboard_stream() -> StreamingResponse:
 
     async def event_generator():
         try:
-            yield f"event: status\ndata: {json.dumps({'enabled': clipboard.enabled, 'supported': clipboard.supported})}\n\n"
+            yield (
+                "event: status\n"
+                f"data: {json.dumps({'enabled': clipboard.enabled, 'supported': clipboard.supported, 'only_alert_scam': clipboard.only_alert_scam, 'smart_filter': clipboard.smart_filter})}\n\n"
+            )
             while True:
                 try:
                     text = await asyncio.wait_for(q.get(), timeout=15.0)
                     result = await asyncio.to_thread(engine.analyze, text, "clipboard")
-                    yield f"event: scan\ndata: {json.dumps(result)}\n\n"
+                    is_borderline = result.get("certainty_tier", "").startswith("Borderline")
+                    if clipboard.only_alert_scam and result.get("verdict") == "SAFE" and not is_borderline:
+                        yield "event: skipped\ndata: {\"verdict\": \"SAFE\"}\n\n"
+                    else:
+                        payload = {**result, "raw_text": text}
+                        yield f"event: scan\ndata: {json.dumps(payload)}\n\n"
                 except asyncio.TimeoutError:
                     yield ": keepalive\n\n"
         finally:

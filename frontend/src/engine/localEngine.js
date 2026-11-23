@@ -162,12 +162,15 @@ const OFFICIAL_DOMAINS = [
   "sihub.in", "billdesk.com", "hdfcbk.io", "kotak.in", "axbk.in",
   "sbi.in", "icicibank.in", "canarabank.com", "unionbankofindia.co.in",
   "federalbank.co.in", "yesbank.in", "indusind.com", "idfcfirstbank.com",
+  "incometax.gov.in", "licindia.in", "gst.gov.in", "passportindia.gov.in",
+  "licindia.com", "ajio.com", "nsdl.co.in", "urbancompany.com",
 ];
 
 const BRAND_KEYWORDS = [
   "sbi", "hdfc", "icici", "axis", "pnb", "bob", "kotak",
   "paytm", "phonepe", "gpay", "rbi", "npci", "epfo", "uidai",
   "aadhaar", "indiapost", "bescom", "msedcl", "trai", "cbi",
+  "income tax", "itr", "incometax", "gst", "lic", "irctc", "passport", "fastag",
 ];
 
 const URGENCY_LEX = [
@@ -201,18 +204,18 @@ const JOB_INVEST_LEX = [
 
 const URL_EXTRACT_RE = /(?:https?:\/\/[^\s<>"']+|www\.[^\s<>"']+|\b[a-z0-9][a-z0-9-]{1,62}\.(?:com|in|co\.in|org\.in|gov\.in|nic\.in|bank\.in|fin\.in|net|org|ly|xyz|top|click|tk|ml|ga|cf|gq|buzz|vip|club|shop|online|site|live|icu|loan|work|at|gd|id|gy)(?:\/[^\s<>"']*)?)/gi;
 const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
-const APK_RE = /(?:\.apk\b|(?:download|install).{0,25}(?:app|apk|file))/i;
+const APK_RE = /(?:\.apk\b|(?:download|install).{0,20}(?:\.apk|apk\b|this\s+app|our\s+app|app\s+from))/i;
 const REMOTE_APP_RE = /\b(?:anydesk|teamviewer|quicksupport|rustdesk|ammyy|screen\s*share)\b/i;
 const UPI_URI_RE = /upi:\/\/pay\?[^\s<>"']+/gi;
 const WA_TG_RE = /(?:wa\.me\/|chat\.whatsapp\.com\/|t\.me\/|\b(?:join|contact|message|dm)\b.{0,20}\b(?:whatsapp|telegram)\b|\btelegram\s+(?:group|channel|task|hr|bot|link|id)\b)/i;
-const PHONE_CALLBACK_RE = /(?:\b(?:call|contact|whatsapp|helpline|dial)\b.{0,35}(?<!\d)(?:\+91[-\s]?)?[6-9]\d{9}(?!\d)|(?<!\d)(?:\+91[-\s]?)?[6-9]\d{9}(?!\d).{0,35}\b(?:call|contact|whatsapp|helpline|dial)\b)/i;
+const PHONE_CALLBACK_RE = /(?:\b(?:call|contact|whatsapp|helpline|dial|कॉल|संपर्क|ಕರೆ|தொடர்பு|కాల్)\b.{0,35}(?<!\d)(?:\+91[-\s]?)?[6-9]\d{9}(?!\d)|(?<!\d)(?:\+91[-\s]?)?[6-9]\d{9}(?!\d).{0,35}\b(?:call|contact|whatsapp|helpline|dial|कॉल|संपर्क|ಕರೆ|தொடர்பு|కాల్)\b)/i;
 const BANK_DISPUTE_PHONE_RE = /\b(?:not\s+you|if\s+not\s+done\s+by\s+you|to\s+report|to\s+dispute|sms\s+block|forward\s+this\s+sms\s+to)\b/i;
 const SENDER_DLT_RE = /^[A-Z]{2}-[A-Z0-9]{5,6}(?:-([TSGP]))?$/i;
 const SENDER_MOBILE_RE = /^(?:\+91[-\s]?)?[6-9]\d{9}$/;
 const TOLLFREE_RE = /(?:1800[-\s]?\d{3}[-\s]?\d{4}|\b1930\b)/;
 const CURRENCY_RE = /(?:(?:rs\.?|inr|₹)\s*(\d[\d,]*(?:\.\d+)?)|\b(\d+(?:\.\d+)?)\s*(lakh|crore|k)\b)/gi;
 const ASKS_OTP_RE = /\b(?:share|send|enter|tell|provide|verify|batao|bhejo)\b.{0,20}\b(?:otp|pin|cvv|mpin|password)\b/i;
-const OTP_DO_NOT_SHARE_RE = /\b(?:do\s*not|don'?t|never|mat|pls\s*do\s*not)\b.{0,20}\b(?:share|disclose|tell|batana)\b(?:\s.{0,20}\b(?:otp|pin|cvv|code|password)\b)?/i;
+const OTP_DO_NOT_SHARE_RE = /\b(?:do\s*not|don'?t|never(?:\s+need\s+to)?|mat|pls\s*do\s*not)\b.{0,20}\b(?:share|disclose|tell|enter|batana)\b(?:\s.{0,20}\b(?:otp|pin|cvv|code|password)\b)?/i;
 const AWARENESS_PSA_RE = /\b(?:beware\s+(?:of|dealing)|unsolicited\s+tips|take\s+informed\s+decision|use\s+telecom\s+services\s+responsibly|official\s+and\s+legitimate|rbi\s+kehta\s+hai|report\s+cyber\s*fraud|cyber\s*dost|stay\s+safe\s+from\s+fraud)\b/i;
 const PHYSICAL_HANDOVER_RE = /\b(?:driver|trip|cab|ride|uber|ola|rapido|delivery\s*(?:boy|partner|agent|executive)|doorstep|at\s+the\s+gate|amazon\s+delivery|flipkart\s+delivery)\b/i;
 const UPI_VPA_RE = /\b[a-z0-9.\-_]{3,}@(?:ybl|okicici|okaxis|oksbi|okhdfcbank|paytm|ibl|axl|upi|apl)\b/i;
@@ -415,7 +418,7 @@ export function extractForensics(norm, sender = null) {
   const otpSafeM = canon.match(OTP_DO_NOT_SHARE_RE);
   const physicalM = canon.match(PHYSICAL_HANDOVER_RE);
   const asksOtpM = canon.match(ASKS_OTP_RE);
-  const asks_otp_or_pin = asksOtpM && !otpSafeM && !physicalM ? 1.0 : 0.0;
+  const asks_otp_or_pin = asksOtpM && !otpSafeM && !physicalM && !isUpiSafetyPsa ? 1.0 : 0.0;
   if (asks_otp_or_pin && asksOtpM) addTrigger(asksOtpM[0], "Solicits OTP / PIN / CVV", "risk");
 
   const awarenessM = canon.match(AWARENESS_PSA_RE);

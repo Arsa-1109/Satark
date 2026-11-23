@@ -1,14 +1,14 @@
 {
   "full_onnx_hybrid": {
-    "unseen_f1": 0.9881,
-    "hard_neg_fpr_pct": 1.33,
-    "hard_neg_fp_count": 4,
+    "unseen_f1": 0.9894,
+    "hard_neg_fpr_pct": 0.0,
+    "hard_neg_fp_count": 0,
     "hard_neg_total": 300,
     "macro_f1_5class": 1.0,
     "adversarial_recall": 1.0,
-    "ece": 0.0077,
-    "brier_score": 0.0082,
-    "median_latency_ms": 44.67,
+    "ece": 0.0041,
+    "brier_score": 0.0076,
+    "median_latency_ms": 38.85,
     "realworld_accuracy": 1.0,
     "realworld_safe_fp": 0,
     "realworld_scam_fn": 0,
@@ -18,28 +18,34 @@
     "ood_safe_total": 30,
     "transactional_fpr_pct": 0.0,
     "transactional_fp_count": 0,
-    "transactional_total": 25
+    "transactional_total": 25,
+    "blind_multilingual_accuracy": 1.0,
+    "blind_multilingual_correct": 24,
+    "blind_multilingual_total": 24
   },
   "lite_fallback": {
-    "unseen_f1": 0.9816,
-    "hard_neg_fpr_pct": 1.33,
-    "hard_neg_fp_count": 4,
+    "unseen_f1": 0.9842,
+    "hard_neg_fpr_pct": 0.0,
+    "hard_neg_fp_count": 0,
     "hard_neg_total": 300,
     "macro_f1_5class": 1.0,
     "adversarial_recall": 1.0,
-    "ece": 0.0071,
-    "brier_score": 0.0112,
-    "median_latency_ms": 8.11,
+    "ece": 0.0036,
+    "brier_score": 0.0104,
+    "median_latency_ms": 6.6,
     "realworld_accuracy": 1.0,
     "realworld_safe_fp": 0,
     "realworld_scam_fn": 0,
     "realworld_total": 50,
-    "ood_safe_fpr_pct": 0.0,
-    "ood_safe_fp_count": 0,
+    "ood_safe_fpr_pct": 3.33,
+    "ood_safe_fp_count": 1,
     "ood_safe_total": 30,
     "transactional_fpr_pct": 0.0,
     "transactional_fp_count": 0,
-    "transactional_total": 25
+    "transactional_total": 25,
+    "blind_multilingual_accuracy": 0.9583,
+    "blind_multilingual_correct": 23,
+    "blind_multilingual_total": 24
   },
   "gates": {
     "G1_unseen_f1_ge_0.94": true,
@@ -50,88 +56,89 @@
     "G6_latency_lt_80ms_full_10ms_lite": true,
     "G10_realworld_stress_ge_92pct": true,
     "G11_ood_safe_fpr_le_5pct": true,
-    "G12_transactional_promo_fpr_le_4pct": true
+    "G12_transactional_promo_fpr_le_4pct": true,
+    "G13_blind_multilingual_ge_92pct": true
   },
   "calibration_curve": [
     {
       "bin": 0,
       "lo": 0.0,
       "hi": 0.1,
-      "count": 1929,
-      "avg_conf": 0.0025,
-      "avg_acc": 0.0047
+      "count": 1882,
+      "avg_conf": 0.0027,
+      "avg_acc": 0.0053
     },
     {
       "bin": 1,
       "lo": 0.1,
       "hi": 0.2,
-      "count": 13,
-      "avg_conf": 0.1354,
-      "avg_acc": 0.0
+      "count": 26,
+      "avg_conf": 0.1437,
+      "avg_acc": 0.1538
     },
     {
       "bin": 2,
       "lo": 0.2,
       "hi": 0.3,
-      "count": 15,
-      "avg_conf": 0.2523,
-      "avg_acc": 0.0667
+      "count": 8,
+      "avg_conf": 0.2566,
+      "avg_acc": 0.25
     },
     {
       "bin": 3,
       "lo": 0.3,
       "hi": 0.4,
-      "count": 7,
-      "avg_conf": 0.3678,
-      "avg_acc": 0.2857
+      "count": 3,
+      "avg_conf": 0.3725,
+      "avg_acc": 0.3333
     },
     {
       "bin": 4,
       "lo": 0.4,
       "hi": 0.5,
-      "count": 7,
-      "avg_conf": 0.4499,
-      "avg_acc": 0.1429
+      "count": 6,
+      "avg_conf": 0.4438,
+      "avg_acc": 0.1667
     },
     {
       "bin": 5,
       "lo": 0.5,
       "hi": 0.6,
-      "count": 6,
-      "avg_conf": 0.5745,
-      "avg_acc": 0.0
+      "count": 2,
+      "avg_conf": 0.5601,
+      "avg_acc": 0.5
     },
     {
       "bin": 6,
       "lo": 0.6,
       "hi": 0.7,
-      "count": 2,
-      "avg_conf": 0.6569,
-      "avg_acc": 0.5
+      "count": 3,
+      "avg_conf": 0.6608,
+      "avg_acc": 0.0
     },
     {
       "bin": 7,
       "lo": 0.7,
       "hi": 0.8,
-      "count": 11,
-      "avg_conf": 0.7762,
-      "avg_acc": 0.0909
+      "count": 5,
+      "avg_conf": 0.7539,
+      "avg_acc": 1.0
     },
     {
       "bin": 8,
       "lo": 0.8,
       "hi": 0.9,
-      "count": 8,
-      "avg_conf": 0.8553,
-      "avg_acc": 0.75
+      "count": 11,
+      "avg_conf": 0.8687,
+      "avg_acc": 0.9091
     },
     {
       "bin": 9,
       "lo": 0.9,
       "hi": 1.0,
-      "count": 1202,
-      "avg_conf": 0.9983,
-      "avg_acc": 0.9975
+      "count": 1210,
+      "avg_conf": 0.9977,
+      "avg_acc": 0.9959
     }
   ]
 }

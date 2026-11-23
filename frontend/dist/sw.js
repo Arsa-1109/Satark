@@ -1,11 +1,15 @@
-const CACHE_NAME = "satark-offline-v2";
+const CACHE_NAME = "satark-offline-v3";
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./manifest.json",
   "./icon.svg",
+  "./icon-192.png",
+  "./icon-512.png",
   "./model_bundle.js",
   "./benchmarks_summary.json",
+  "./assets/index-COP3TNFN.js",
+  "./assets/index-CPm1F7z-.css"
 ];
 
 self.addEventListener("install", (event) => {

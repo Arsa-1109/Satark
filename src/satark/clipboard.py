@@ -5,12 +5,46 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import hashlib
+import re
 import sys
 import threading
 import time
-from typing import Callable, Awaitable
 
 CF_UNICODETEXT = 13
+
+_HIGH_SIGNAL_RE = re.compile(r"(?:upi://|https?://|bit\.ly|tinyurl|\.apk\b)", re.IGNORECASE)
+_LOCAL_PATH_RE = re.compile(r"^(?:[A-Za-z]:\\|/(?:usr|var|etc|home|Users)/|\\\\)")
+_CODE_LINE_RE = re.compile(
+    r"^(?:import\s+|from\s+\S+\s+import\s+|def\s+|class\s+|function\s+|const\s+|let\s+|var\s+|SELECT\s+|#include\s+)"
+)
+
+
+def is_scannable_clipboard_text(text: str) -> bool:
+    """Filter out trivial or non-message clipboard copies (short snippets, paths, code)."""
+    if not text:
+        return False
+    stripped = text.strip()
+    if not stripped or len(stripped) > 10_000:
+        return False
+
+    if _HIGH_SIGNAL_RE.search(stripped) and len(stripped) >= 10:
+        return True
+
+    if len(stripped) < 15:
+        return False
+
+    lines = [ln.strip() for ln in stripped.splitlines() if ln.strip()]
+    if len(lines) == 1 and _LOCAL_PATH_RE.match(lines[0]):
+        return False
+
+    if stripped.startswith("{") and stripped.endswith("}"):
+        return False
+
+    code_lines = sum(1 for ln in lines if _CODE_LINE_RE.match(ln))
+    if code_lines >= 2:
+        return False
+
+    return True
 
 
 def _read_windows_clipboard() -> str | None:
@@ -54,6 +88,8 @@ class ClipboardGuardian:
         self.poll_interval = poll_interval
         self.supported = sys.platform == "win32"
         self.enabled = False
+        self.only_alert_scam = False
+        self.smart_filter = True
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_hash: str | None = None
@@ -97,6 +133,25 @@ class ClipboardGuardian:
         self.enabled = enabled
         return self.enabled
 
+    def set_config(
+        self,
+        enabled: bool | None = None,
+        only_alert_scam: bool | None = None,
+        smart_filter: bool | None = None,
+    ) -> dict[str, bool]:
+        if enabled is not None:
+            self.set_enabled(enabled)
+        if only_alert_scam is not None:
+            self.only_alert_scam = bool(only_alert_scam)
+        if smart_filter is not None:
+            self.smart_filter = bool(smart_filter)
+        return {
+            "enabled": self.enabled,
+            "supported": self.supported,
+            "only_alert_scam": self.only_alert_scam,
+            "smart_filter": self.smart_filter,
+        }
+
     def stop(self) -> None:
         self._stop_event.set()
         self.enabled = False
@@ -126,7 +181,8 @@ class ClipboardGuardian:
                         if digest != self._last_hash:
                             self._last_hash = digest
                             if 1 <= len(text) <= 10_000:
-                                self._dispatch(text)
+                                if not self.smart_filter or is_scannable_clipboard_text(text):
+                                    self._dispatch(text)
                 except Exception:
                     pass
             time.sleep(self.poll_interval)

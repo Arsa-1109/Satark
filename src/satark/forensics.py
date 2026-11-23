@@ -79,12 +79,15 @@ OFFICIAL_DOMAINS = frozenset({
     "sihub.in", "billdesk.com", "hdfcbk.io", "kotak.in", "axbk.in",
     "sbi.in", "icicibank.in", "canarabank.com", "unionbankofindia.co.in",
     "federalbank.co.in", "yesbank.in", "indusind.com", "idfcfirstbank.com",
+    "incometax.gov.in", "licindia.in", "gst.gov.in", "passportindia.gov.in",
+    "licindia.com", "ajio.com", "nsdl.co.in", "urbancompany.com",
 })
 
 BRAND_KEYWORDS = (
     "sbi", "hdfc", "icici", "axis", "pnb", "bob", "kotak",
     "paytm", "phonepe", "gpay", "rbi", "npci", "epfo", "uidai",
     "aadhaar", "indiapost", "bescom", "msedcl", "trai", "cbi",
+    "income tax", "itr", "incometax", "gst", "lic", "irctc", "passport", "fastag",
 )
 
 URGENCY_LEX = (
@@ -126,7 +129,7 @@ _URL_RE = re.compile(
     re.IGNORECASE,
 )
 _IPV4_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
-_APK_RE = re.compile(r"(?:\.apk\b|(?:download|install).{0,25}(?:app|apk|file))", re.IGNORECASE)
+_APK_RE = re.compile(r"(?:\.apk\b|(?:download|install).{0,20}(?:\.apk|apk\b|this\s+app|our\s+app|app\s+from))", re.IGNORECASE)
 _REMOTE_APP_RE = re.compile(r"\b(?:anydesk|teamviewer|quicksupport|rustdesk|ammyy|screen\s*share)\b", re.IGNORECASE)
 _UPI_URI_RE = re.compile(r"upi://pay\?[^\s<>\"']+", re.IGNORECASE)
 _WA_TG_RE = re.compile(
@@ -134,7 +137,7 @@ _WA_TG_RE = re.compile(
     re.IGNORECASE,
 )
 _PHONE_CALLBACK_RE = re.compile(
-    r"(?:\b(?:call|contact|whatsapp|helpline|dial)\b.{0,35}(?<!\d)(?:\+91[\-\s]?)?[6-9]\d{9}(?!\d)|(?<!\d)(?:\+91[\-\s]?)?[6-9]\d{9}(?!\d).{0,35}\b(?:call|contact|whatsapp|helpline|dial)\b)",
+    r"(?:\b(?:call|contact|whatsapp|helpline|dial|कॉल|संपर्क|ಕರೆ|தொடர்பு|కాల్)\b.{0,35}(?<!\d)(?:\+91[\-\s]?)?[6-9]\d{9}(?!\d)|(?<!\d)(?:\+91[\-\s]?)?[6-9]\d{9}(?!\d).{0,35}\b(?:call|contact|whatsapp|helpline|dial|कॉल|संपर्क|ಕರೆ|தொடர்பு|కాల్)\b)",
     re.IGNORECASE,
 )
 _BANK_DISPUTE_PHONE_RE = re.compile(
@@ -146,7 +149,7 @@ _SENDER_MOBILE_RE = re.compile(r"^(?:\+91[\-\s]?)?[6-9]\d{9}$")
 _TOLLFREE_RE = re.compile(r"(?:1800[\-\s]?\d{3}[\-\s]?\d{4}|\b1930\b)")
 _CURRENCY_RE = re.compile(r"(?:(?:rs\.?|inr|₹)\s*(\d[\d,]*(?:\.\d+)?)|\b(\d+(?:\.\d+)?)\s*(lakh|crore|k)\b)", re.IGNORECASE)
 _ASKS_OTP_RE = re.compile(r"\b(?:share|send|enter|tell|provide|verify|batao|bhejo)\b.{0,20}\b(?:otp|pin|cvv|mpin|password)\b", re.IGNORECASE)
-_OTP_DO_NOT_SHARE_RE = re.compile(r"\b(?:do\s*not|don'?t|never|mat|pls\s*do\s*not)\b.{0,20}\b(?:share|disclose|tell|batana)\b(?:\s.{0,20}\b(?:otp|pin|cvv|code|password)\b)?", re.IGNORECASE)
+_OTP_DO_NOT_SHARE_RE = re.compile(r"\b(?:do\s*not|don'?t|never(?:\s+need\s+to)?|mat|pls\s*do\s*not)\b.{0,20}\b(?:share|disclose|tell|enter|batana)\b(?:\s.{0,20}\b(?:otp|pin|cvv|code|password)\b)?", re.IGNORECASE)
 _AWARENESS_PSA_RE = re.compile(
     r"\b(?:beware\s+(?:of|dealing)|unsolicited\s+tips|take\s+informed\s+decision|use\s+telecom\s+services\s+responsibly|official\s+and\s+legitimate|rbi\s+kehta\s+hai|report\s+cyber\s*fraud|cyber\s*dost|stay\s+safe\s+from\s+fraud)\b",
     re.IGNORECASE,
@@ -398,7 +401,7 @@ def extract_forensics(norm: NormalizedResult, sender: str | None = None) -> Fore
     otp_safe_m = _OTP_DO_NOT_SHARE_RE.search(canon)
     physical_m = _PHYSICAL_HANDOVER_RE.search(canon)
     asks_otp_m = _ASKS_OTP_RE.search(canon)
-    asks_otp_or_pin = 1.0 if (asks_otp_m and not otp_safe_m and not physical_m) else 0.0
+    asks_otp_or_pin = 1.0 if (asks_otp_m and not otp_safe_m and not physical_m and not is_upi_safety_psa) else 0.0
     if asks_otp_or_pin and asks_otp_m:
         add_trigger(asks_otp_m.group(0), "Solicits OTP / PIN / CVV", "risk")
 

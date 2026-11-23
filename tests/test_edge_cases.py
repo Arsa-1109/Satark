@@ -149,3 +149,43 @@ def test_gate_g9_packaging_and_zero_cdn() -> None:
         p = ROOT / rel
         if p.is_file():
             assert p.stat().st_size <= 100 * 1024 * 1024, f"File exceeds 100 MB: {rel}"
+
+
+def test_clipboard_noise_filter_and_toggle_api() -> None:
+    from satark.clipboard import is_scannable_clipboard_text
+
+    assert is_scannable_clipboard_text("") is False
+    assert is_scannable_clipboard_text("hello") is False
+    assert is_scannable_clipboard_text(r"C:\Users\arsal\Desktop\file.txt") is False
+    assert is_scannable_clipboard_text("import os\nfrom pathlib import Path\ndef foo(): pass") is False
+    assert is_scannable_clipboard_text('{"key": "value"}') is False
+
+    assert is_scannable_clipboard_text("bit.ly/sbi-kyc") is True
+    assert is_scannable_clipboard_text("VM-SBIKYC: Your SBI YONO account is blocked! Update KYC now.") is True
+
+    resp = client.post("/api/clipboard/toggle", json={"only_alert_scam": True, "smart_filter": True})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["only_alert_scam"] is True
+    assert body["smart_filter"] is True
+
+    # Reset back to default
+    client.post("/api/clipboard/toggle", json={"only_alert_scam": False, "smart_filter": True})
+
+
+def test_cli_report_flag() -> None:
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "cli.py"),
+            "--lite",
+            "--report",
+            "VM-SBIKYC: Aapka SBI khata band hoga! Update at bit.ly/sbi-kyc",
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "Sanchar Saathi Chakshu / 1930 Cybercrime Report Draft" in proc.stdout
+    assert "bit.ly/sbi-kyc" in proc.stdout
