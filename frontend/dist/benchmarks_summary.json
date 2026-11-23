@@ -1,0 +1,114 @@
+{
+  "full_onnx_hybrid": {
+    "unseen_f1": 0.9699,
+    "hard_neg_fpr_pct": 0.0,
+    "hard_neg_fp_count": 0,
+    "hard_neg_total": 200,
+    "macro_f1_5class": 1.0,
+    "adversarial_recall": 1.0,
+    "ece": 0.0132,
+    "brier_score": 0.0116,
+    "median_latency_ms": 23.75
+  },
+  "lite_fallback": {
+    "unseen_f1": 0.9674,
+    "hard_neg_fpr_pct": 0.0,
+    "hard_neg_fp_count": 0,
+    "hard_neg_total": 200,
+    "macro_f1_5class": 1.0,
+    "adversarial_recall": 1.0,
+    "ece": 0.0134,
+    "brier_score": 0.0126,
+    "median_latency_ms": 5.73
+  },
+  "gates": {
+    "G1_unseen_f1_ge_0.94": true,
+    "G2_hard_neg_fpr_le_2pct": true,
+    "G3_macro_f1_ge_0.88": true,
+    "G4_adv_recall_ge_0.90": true,
+    "G5_ece_le_0.06_brier_le_0.08": true,
+    "G6_latency_lt_80ms_full_10ms_lite": true
+  },
+  "calibration_curve": [
+    {
+      "bin": 0,
+      "lo": 0.0,
+      "hi": 0.1,
+      "count": 2960,
+      "avg_conf": 0.0011,
+      "avg_acc": 0.002
+    },
+    {
+      "bin": 1,
+      "lo": 0.1,
+      "hi": 0.2,
+      "count": 6,
+      "avg_conf": 0.1226,
+      "avg_acc": 0.1667
+    },
+    {
+      "bin": 2,
+      "lo": 0.2,
+      "hi": 0.3,
+      "count": 2,
+      "avg_conf": 0.2538,
+      "avg_acc": 0.5
+    },
+    {
+      "bin": 3,
+      "lo": 0.3,
+      "hi": 0.4,
+      "count": 1,
+      "avg_conf": 0.313,
+      "avg_acc": 1.0
+    },
+    {
+      "bin": 4,
+      "lo": 0.4,
+      "hi": 0.5,
+      "count": 8,
+      "avg_conf": 0.4481,
+      "avg_acc": 0.125
+    },
+    {
+      "bin": 5,
+      "lo": 0.5,
+      "hi": 0.6,
+      "count": 4,
+      "avg_conf": 0.537,
+      "avg_acc": 0.25
+    },
+    {
+      "bin": 6,
+      "lo": 0.6,
+      "hi": 0.7,
+      "count": 4,
+      "avg_conf": 0.6528,
+      "avg_acc": 1.0
+    },
+    {
+      "bin": 7,
+      "lo": 0.7,
+      "hi": 0.8,
+      "count": 61,
+      "avg_conf": 0.7787,
+      "avg_acc": 0.0328
+    },
+    {
+      "bin": 8,
+      "lo": 0.8,
+      "hi": 0.9,
+      "count": 4,
+      "avg_conf": 0.8676,
+      "avg_acc": 1.0
+    },
+    {
+      "bin": 9,
+      "lo": 0.9,
+      "hi": 1.0,
+      "count": 1185,
+      "avg_conf": 0.9977,
+      "avg_acc": 0.9983
+    }
+  ]
+}
