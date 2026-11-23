@@ -98,6 +98,26 @@ def test_realworld_service_and_subtle_scams() -> None:
         assert engine.analyze(s)["verdict"] == "SCAM", f"Expected SCAM for: {s}"
 
 
+def test_headerless_transactional_and_sender_id() -> None:
+    tx_msgs = [
+        "Dear UPI user A/C X1234 debited by 450.0 on date 24Nov26 trf to ZOMATO Refno 432918472910. If not u? call 1800111109.",
+        "Sent Rs.250.00 From HDFC Bank A/C *4821 To SWIGGY On 24/11/26 Ref 632819204512 Not You? Call 18002586161",
+        "INR 1,299.00 spent using ICICI Bank Card XX8001 on 24-Nov-26 on AMAZON. Avl Limit: INR 84,200.00. If not you, call 18001080 or SMS BLOCK 8001 to 9215676766.",
+        "HDFC Bank: Rs.199.00 auto-debited from your Card XX4421 for Spotify Standing Instruction. Manage at sihub.in",
+    ]
+    for m in tx_msgs:
+        assert engine.analyze(m)["verdict"] == "SAFE", f"Expected SAFE for headerless tx: {m}"
+
+    # Sender ID: DLT transactional vs personal mobile impersonation
+    res_dlt = engine.analyze("Rs.1,200 debited from A/c XX4821 on 24-11-26. Avl Bal Rs 9,400.", sender="VM-HDFCBK-S")
+    assert res_dlt["verdict"] == "SAFE"
+    assert res_dlt["forensics"]["dlt_header"] == "VM-HDFCBK-S"
+
+    res_spoof = engine.analyze("Dear customer, your SBI YONO account is suspended. Verify KYC immediately.", sender="+919876543210")
+    assert res_spoof["verdict"] == "SCAM"
+    assert res_spoof["forensics"]["sender_analysis"]["impersonation_risk"] is True
+
+
 def test_gate_g9_packaging_and_zero_cdn() -> None:
     summary_path = ROOT / "models" / "lite" / "benchmarks_summary.json"
     assert summary_path.exists(), "models/lite/benchmarks_summary.json missing"
