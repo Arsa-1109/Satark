@@ -9,34 +9,37 @@ Satark detects Indian SMS and WhatsApp scams **100% offline on CPU** across both
 ## Architecture
 
 1. **Layer 1 — Adversarial & Indic Phonetic Normaliser (`src/satark/normalizer.py`) + 35 Indian Forensics (`src/satark/forensics.py`)**
-   - Unicode `NFKC`, zero-width/bidi stripping, Cyrillic/Greek homoglyph folding, spaced-token collapsing (`K.Y.C` → `kyc`), token-level leetspeak decoding (`l04n` → `loan`), and Indic Hinglish phonetic canonicalisation.
-   - Exact 35-feature vector `f[0..34]` covering TRAI DLT headers, `.bank.in` / official Indian domains, brand-domain mismatch, `upi://pay` collect/cashback traps, `.apk` sideloading lures, AnyDesk/TeamViewer, Punycode (`xn--`), and anti-fraud OTP warnings.
+   - Unicode `NFKC`, zero-width/bidi stripping, Cyrillic/Greek homoglyph folding, spaced-token collapsing (`K.Y.C` → `kyc`), token-level leetspeak decoding (`l04n` → `loan`) with protected spans preserving URLs, emails, UPI VPAs, and Indian vehicle plates, and Indic Hinglish phonetic canonicalisation.
+   - Exact 35-feature vector `f[0..34]` covering TRAI DLT headers, `.bank.in` / official Indian domains (excluding abusable user-hosted platforms such as `forms.gle` and `docs.google.com`), brand-domain mismatch, `upi://pay` and urgent VPA transfer traps, `.apk` sideloading lures, AnyDesk/TeamViewer, Punycode (`xn--`), social-engineered OTP/PIN solicitation, and anti-fraud OTP warnings.
 2. **Layer 2 — Dual-Mode Calibrated ML Engine (`src/satark/backbone.py`, `src/satark/engine.py`)**
-   - **Full ONNX Hybrid (`full_onnx_hybrid`)**: Frozen `paraphrase-multilingual-MiniLM-L12-v2` INT8 ONNX (`max_length=128`, 384-d mean-pooled) + Char(3–5)/Word(1–2) TF-IDF + 35 scaled forensics → Platt-calibrated Logistic Regression + LightGBM stacking + Shannon-entropy OOD routing to `Other`.
-   - **Lite Fallback (`lite_fallback`, `0.22 MB` in `models/lite/`)**: Pure Platt-calibrated Logistic Regression on TF-IDF + 35 forensics; runs immediately after `git clone` with zero downloads.
-   - **Offline Mobile PWA (`pwa_js`, `0.54 MB` `frontend/public/model_bundle.js`)**: Exact 1-to-1 JS port (`frontend/src/engine/localEngine.js`) with Android `share_target` and Service Worker caching.
+   - **Full ONNX Hybrid (`full_onnx_hybrid`)**: Frozen `paraphrase-multilingual-MiniLM-L12-v2` INT8 ONNX (`max_length=128`, 384-d mean-pooled) + Char(3–5)/Word(1–2) TF-IDF + 35 scaled forensics → sample-weight-balanced, Platt-calibrated Logistic Regression + LightGBM stacking (`n_jobs=1` single-row inference) + Shannon-entropy OOD routing to `Other`. Zero hardcoded post-hoc probability clamps.
+   - **Lite Fallback (`lite_fallback`, `0.25 MB` in `models/lite/`)**: Pure Platt-calibrated Logistic Regression on TF-IDF + 35 forensics; runs immediately after `git clone` with zero downloads.
+   - **Offline Mobile PWA (`pwa_js`, `0.57 MB` `frontend/public/model_bundle.js`)**: Exact 1-to-1 JS port (`frontend/src/engine/localEngine.js`) with Android `share_target` and Service Worker caching.
 3. **Layer 3 — Swiss Editorial UI (`frontend/`) + Windows Clipboard Guardian (`src/satark/clipboard.py`) + CLI (`cli.py`)**
 
 ---
 
-## Verified Quantitative Results (Gates G1–G14)
+## Verified Quantitative Results (Gates G1–G15)
+
+Trained with template-skeleton `GroupShuffleSplit` (zero template leakage across `train`/`val`/`test_unseen`), sample-weight-aware class balancing, regularized Platt calibration, and zero hardcoded verdict overrides:
 
 | Gate | Metric | Full ONNX Hybrid | Lite Fallback / PWA | Target |
 | :--- | :--- | :---: | :---: | :---: |
-| **G1** | Unseen Binary F1 (`test_unseen.csv`) | **0.9755** | **0.9654** | $\ge 0.94$ |
-| **G2** | Hard-Negative TRAI DLT Safe FPR (`test_hard_negatives.csv`) | **0.0%** (0/300) | **0.0%** (0/300) | $\le 2.0\%$ |
-| **G3** | 5-Class Category Macro-F1 (`test_unseen.csv`) | **1.0000** | **1.0000** | $\ge 0.88$ |
-| **G4** | Adversarial & Obfuscated Recall (`test_adversarial.csv`) | **1.0000** | **1.0000** | $\ge 0.90$ |
-| **G5** | Calibration (`ECE` / `Brier Score`) | **0.0045** / **0.0056** | **0.0038** / **0.0084** | $\le 0.06$ / $\le 0.08$ |
-| **G6** | Median CPU Latency | **34.48 ms** | **5.18 ms** | $< 80\text{ ms}$ / $< 10\text{ ms}$ |
-| **G7** | Python Lite vs PWA JS Parity (100 samples) | — | **max $\Delta = 0.0001$**, 0 mismatches | $< 0.005$ |
+| **G1** | Unseen Binary F1 (`test_unseen.csv`, 2,443 msgs) | **0.9625** (P=0.9978, R=0.9296) | **0.9551** (P=0.9868, R=0.9255) | $\ge 0.94$ |
+| **G2** | Hard-Negative TRAI DLT Safe FPR (`test_hard_negatives.csv`) | **0.33%** (1/300) | **0.67%** (2/300) | $\le 2.0\%$ |
+| **G3** | 5-Class Category Macro-F1 (`test_unseen.csv`) | **0.9540** | **0.9710** | $\ge 0.88$ |
+| **G4** | Adversarial & Obfuscated Recall (`test_adversarial.csv`) | **1.0000** | **0.9875** | $\ge 0.90$ |
+| **G5** | Calibration (`ECE` / `Brier Score`) | **0.0159** / **0.0103** | **0.0110** / **0.0146** | $\le 0.06$ / $\le 0.08$ |
+| **G6** | Median CPU Latency | **38.50 ms** | **7.78 ms** | $< 80\text{ ms}$ / $< 10\text{ ms}$ |
+| **G7** | Python Lite vs PWA JS Parity (100 samples) | — | **max $\Delta = 0.0000$**, 0 mismatches | $< 0.005$ |
 | **G8** | Subprocess Zero-Network Audit (`tests/verify_offline.py`) | **0 sockets, 0 bytes** | **0 sockets, 0 bytes** | `0` sockets / `0` bytes |
 | **G9** | GitHub Packaging (`< 100 MB` files, zero CDN in `frontend/dist/`) | **Pass** | **Pass** | Pass |
-| **G10** | Held-Out Real-World Indian Stress (`test_realworld_stress.csv`, 50 msgs) | **100.0%** (50/50) | **100.0%** (50/50) | $\ge 92.0\%$ |
-| **G11** | Blind OOD Safe FPR (`test_ood_safe.csv`, 31 msgs) | **0.0%** (0/31) | **3.23%** (1/31) | $\le 5.0\%$ |
+| **G10** | Held-Out Real-World Indian Stress (`test_realworld_stress.csv`, 50 msgs) | **100.0%** (50/50) | **98.0%** (49/50) | $\ge 92.0\%$ |
+| **G11** | Blind OOD Safe FPR (`test_ood_safe.csv`, 31 msgs) | **0.0%** (0/31) | **0.0%** (0/31) | $\le 5.0\%$ |
 | **G12** | Headerless Transactional & Promo FPR (`test_transactional_safe.csv`, 25 msgs) | **0.0%** (0/25) | **0.0%** (0/25) | $\le 4.0\%$ |
-| **G13** | Blind Multilingual + Novel Scam + Tricky Safe (`test_blind_multilingual.csv`, 24 msgs) | **100.0%** (24/24) | **100.0%** (24/24) | $\ge 92.0\%$ |
-| **G14** | Blind Commercial Ads Safe FPR (`test_ads_safe.csv`, 20 msgs) | **5.0%** (1/20) | **0.0%** (0/20) | $\le 5.0\%$ |
+| **G13** | Blind Multilingual + Novel Scam + Tricky Safe (`test_blind_multilingual.csv`, 24 msgs) | **100.0%** (24/24) | **95.83%** (23/24) | $\ge 92.0\%$ |
+| **G14** | Blind Commercial Ads Safe FPR (`test_ads_safe.csv`, 20 msgs) | **0.0%** (0/20) | **0.0%** (0/20) | $\le 5.0\%$ |
+| **G15** | Strictly Blind Real-World Generalization (`test_blind_generalization.csv`, 50 msgs) | **0.8444 F1** (86% Acc, 95% P, 76% R, 4% FPR) | **0.7619 F1** (80% Acc, 94.1% P, 64% R, 4% FPR) | — |
 
 ---
 
@@ -48,7 +51,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. (Optional) Fetch 118 MB INT8 ONNX Backbone for `full_onnx_hybrid` Mode
-> Without this step, Satark runs immediately in `lite_fallback` mode using the committed `0.22 MB` weights in `models/lite/`.
+> Without this step, Satark runs immediately in `lite_fallback` mode using the committed `0.25 MB` weights in `models/lite/`.
 ```bash
 python scripts/fetch_backbone.py
 ```
@@ -91,11 +94,9 @@ pytest tests/test_edge_cases.py -v
 
 - **Datasets**:
   - UCI SMS Spam Collection (Almeida & Gómez Hidalgo, 2012) — weighted `0.35` for Stage A binary only.
-  - Hugging Face Indian/Hinglish SMS datasets: `CloveAI/india-spam-sms`, `anmolshrivastav/scam-ham-india`.
-  - Curated 2025–26 Indian 5-class scam & TRAI DLT hard-negative evaluation suite.
+  - Hugging Face SMS datasets: `Deysi/spam-detection-dataset`, `anmolshrivastav/scam-ham-india`.
+  - Curated 2025–26 Indian 5-class scam, modern social-engineering, and TRAI DLT hard-negative evaluation suites.
 - **Pretrained Model**:
   - `onnx-community/paraphrase-multilingual-MiniLM-L12-v2-ONNX` (`model_quantized.onnx`, Apache-2.0 / Sentence-Transformers).
 - **Libraries**:
   - `onnxruntime`, `tokenizers`, `scikit-learn`, `lightgbm`, `fastapi`, `uvicorn`, `huggingface_hub`, `numpy`, `scipy`, `joblib`, `pandas`, `pydantic`, `pytest`, `httpx`, `react`, `vite`, `tailwindcss`, `lucide-react`.
-- **AI Assistance**:
-  - Built with AI-assisted engineering (Antigravity) for architecture refinement, dataset curation, JS parity implementation, and automated test verification.
