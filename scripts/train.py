@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from scipy.sparse import csr_matrix, hstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score, log_loss
-from sklearn.model_selection import cross_val_predict
+from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,10 +25,21 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from export_pwa import export_bundle  # noqa: E402
 from satark.backbone import OnnxBackbone  # noqa: E402
 from satark.engine import CATEGORIES  # noqa: E402
-from satark.forensics import extract_forensics  # noqa: E402
+from satark.forensics import FEATURE_NAMES, extract_forensics  # noqa: E402
 from satark.normalizer import normalize_text  # noqa: E402
 
-DATA_PROC = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\data\processed")
+
+def _resolve_data_proc() -> Path:
+    env_dir = os.environ.get("SATARK_DATA_DIR")
+    if env_dir:
+        return Path(env_dir) / "processed"
+    default_dir = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\data\processed")
+    if default_dir.parent.parent.exists():
+        return default_dir
+    return ROOT / "data" / "processed"
+
+
+DATA_PROC = _resolve_data_proc()
 LITE_DIR = ROOT / "models" / "lite"
 ONNX_DIR = ROOT / "models" / "onnx"
 
@@ -46,17 +58,17 @@ def _prepare_texts(df: pd.DataFrame) -> tuple[list[str], list[str], np.ndarray]:
 
 
 def _fit_platt(logits: np.ndarray, y_true: np.ndarray, weights: np.ndarray | None = None) -> tuple[float, float]:
-    platt = LogisticRegression(C=1e6, max_iter=500)
+    platt = LogisticRegression(C=10.0, max_iter=500)
     platt.fit(logits.reshape(-1, 1), y_true, sample_weight=weights)
     return float(platt.coef_[0][0]), float(platt.intercept_[0])
 
 
-def _select_threshold(probs: np.ndarray, y_true: np.ndarray, max_fpr: float = 0.006) -> float:
-    """Pick highest-F1 threshold on val.csv with FPR <= max_fpr."""
+def _select_threshold(probs: np.ndarray, y_true: np.ndarray, max_fpr: float = 0.015) -> float:
+    """Pick highest-F1 threshold on val.csv within a fair FPR cap."""
     best_t = 0.50
     best_f1 = -1.0
     neg_mask = y_true == 0
-    for t in np.arange(0.50, 0.76, 0.02):
+    for t in np.arange(0.42, 0.63, 0.02):
         preds = (probs >= t).astype(np.int32)
         fpr = float((preds[neg_mask] == 1).mean()) if neg_mask.any() else 0.0
         if fpr <= max_fpr:
@@ -65,13 +77,11 @@ def _select_threshold(probs: np.ndarray, y_true: np.ndarray, max_fpr: float = 0.
                 best_f1 = f1
                 best_t = float(round(t, 2))
     if best_f1 < 0:
-        # Fallback: pick threshold with lowest FPR
-        best_fpr = 1.0
-        for t in np.arange(0.50, 0.73, 0.02):
+        for t in np.arange(0.42, 0.63, 0.02):
             preds = (probs >= t).astype(np.int32)
-            fpr = float((preds[neg_mask] == 1).mean())
-            if fpr < best_fpr:
-                best_fpr = fpr
+            f1 = float(f1_score(y_true, preds))
+            if f1 > best_f1:
+                best_f1 = f1
                 best_t = float(round(t, 2))
     return best_t
 
@@ -159,16 +169,24 @@ def main() -> None:
         compress=3,
     )
 
+    # --- True sample-weight-aware class balance (no double amplification) ---
+    pos_w_sum = float(w_tr[y_tr == 1].sum())
+    neg_w_sum = float(w_tr[y_tr == 0].sum())
+    target_pos_ratio = 0.72
+    scale_pos = (target_pos_ratio * neg_w_sum) / max(pos_w_sum, 1e-6)
+    w_tr_bal = np.where(y_tr == 1, w_tr * scale_pos, w_tr).astype(np.float32)
+    print(f"Effective train weights: neg={neg_w_sum:.1f}, pos_raw={pos_w_sum:.1f}, scale_pos={scale_pos:.3f}, pos_bal={float(w_tr_bal[y_tr==1].sum()):.1f}")
+
     # --- Lite Stage A ---
-    print("Training Lite Stage A (precision-first)...")
-    stage_a_cw = {0: 1.5, 1: 1.0}
+    print("Training Lite Stage A (sample-weight balanced)...")
+    stage_a_cw = None
     lr_lite_a = LogisticRegression(C=1.5, class_weight=stage_a_cw, max_iter=1000)
-    lr_lite_a.fit(x_tr_sparse, y_tr, sample_weight=w_tr)
+    lr_lite_a.fit(x_tr_sparse, y_tr, sample_weight=w_tr_bal)
     va_logits_lite = lr_lite_a.decision_function(x_va_sparse)
     pa_lite, pb_lite = _fit_platt(va_logits_lite, y_va, w_va)
     va_probs_lite = 1.0 / (1.0 + np.exp(-(pa_lite * va_logits_lite + pb_lite)))
-    th_lite = _select_threshold(va_probs_lite, y_va, max_fpr=0.006)
-    print(f"Selected Lite Stage A threshold={th_lite}")
+    th_lite = _select_threshold(va_probs_lite, y_va, max_fpr=0.015)
+    print(f"Selected Lite Stage A threshold={th_lite} (platt_a={pa_lite:.4f}, platt_b={pb_lite:.4f}, intercept={lr_lite_a.intercept_[0]:.4f})")
     joblib.dump(
         {"clf": lr_lite_a, "platt_a": pa_lite, "platt_b": pb_lite, "threshold": th_lite},
         LITE_DIR / "stage_a_lite.joblib",
@@ -204,16 +222,15 @@ def main() -> None:
     x_tr_hybrid = hstack([csr_matrix(tr_embs), x_tr_sparse], format="csr")
     x_va_hybrid = hstack([csr_matrix(va_embs), x_va_sparse], format="csr")
 
-    print("Training Full ONNX Hybrid Stage A (LR + LightGBM stacking, precision-first)...")
+    print("Training Full ONNX Hybrid Stage A (LR + LightGBM stacking, sample-weight balanced)...")
     lr_full_a = LogisticRegression(C=1.5, class_weight=stage_a_cw, max_iter=1000)
-    oof_lr_logits = cross_val_predict(
-        LogisticRegression(C=1.5, class_weight=stage_a_cw, max_iter=1000),
-        x_tr_hybrid,
-        y_tr,
-        cv=5,
-        method="decision_function",
-    )
-    lr_full_a.fit(x_tr_hybrid, y_tr, sample_weight=w_tr)
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    oof_lr_logits = np.zeros(len(y_tr), dtype=np.float64)
+    for tr_i, va_i in skf.split(x_tr_hybrid, y_tr):
+        lr_fold = LogisticRegression(C=1.5, class_weight=stage_a_cw, max_iter=1000)
+        lr_fold.fit(x_tr_hybrid[tr_i], y_tr[tr_i], sample_weight=w_tr_bal[tr_i])
+        oof_lr_logits[va_i] = lr_fold.decision_function(x_tr_hybrid[va_i])
+    lr_full_a.fit(x_tr_hybrid, y_tr, sample_weight=w_tr_bal)
 
     lgbm_tr_in = np.hstack([tr_embs, xf_tr, oof_lr_logits[:, None]])
     lgbm_full_a = LGBMClassifier(
@@ -229,23 +246,23 @@ def main() -> None:
         n_jobs=4,
         verbosity=-1,
     )
-    lgbm_full_a.fit(lgbm_tr_in, y_tr, sample_weight=w_tr)
+    lgbm_full_a.fit(lgbm_tr_in, y_tr, sample_weight=w_tr_bal)
 
     va_lr_logits = lr_full_a.decision_function(x_va_hybrid)
     va_lgbm_in = np.hstack([va_embs, xf_va, va_lr_logits[:, None]])
     va_lgbm_probs = np.clip(lgbm_full_a.predict_proba(va_lgbm_in)[:, 1], 1e-6, 1.0 - 1e-6)
     va_lgbm_logits = np.log(va_lgbm_probs / (1.0 - va_lgbm_probs))
 
-    best_alpha, best_loss, pa_full, pb_full, best_probs_full = 0.75, 999.0, 1.0, 0.0, None
-    for cand_alpha in (0.70, 0.75, 0.80):
+    best_alpha, best_loss, pa_full, pb_full, best_probs_full = 0.70, 999.0, 1.0, 0.0, None
+    for cand_alpha in (0.60, 0.65, 0.70, 0.75, 0.80):
         blended = cand_alpha * va_lr_logits + (1.0 - cand_alpha) * va_lgbm_logits
         pa, pb = _fit_platt(blended, y_va, w_va)
         probs = 1.0 / (1.0 + np.exp(-(pa * blended + pb)))
         loss = float(log_loss(y_va, probs, sample_weight=w_va))
         if loss < best_loss:
             best_alpha, best_loss, pa_full, pb_full, best_probs_full = cand_alpha, loss, pa, pb, probs
-    th_full = _select_threshold(best_probs_full, y_va, max_fpr=0.006)
-    print(f"Selected Full Stage A blend alpha={best_alpha}, threshold={th_full} (val log_loss={best_loss:.4f})")
+    th_full = _select_threshold(best_probs_full, y_va, max_fpr=0.015)
+    print(f"Selected Full Stage A blend alpha={best_alpha}, threshold={th_full} (platt_a={pa_full:.4f}, platt_b={pb_full:.4f}, intercept={lr_full_a.intercept_[0]:.4f}, val log_loss={best_loss:.4f})")
 
     joblib.dump(
         {"lr": lr_full_a, "lgbm": lgbm_full_a, "platt_a": pa_full, "platt_b": pb_full, "alpha": best_alpha, "threshold": th_full},
@@ -262,6 +279,13 @@ def main() -> None:
         ONNX_DIR / "stage_b_full.joblib",
         compress=3,
     )
+    c_len = len(char_tfidf.vocabulary_)
+    w_len = len(word_tfidf.vocabulary_)
+    lf = lr_lite_a.coef_[0][c_len + w_len :]
+    ff = lr_full_a.coef_[0][384 + c_len + w_len :]
+    print("\nLearned forensic weights (Lite vs Full):")
+    for idx, fname in enumerate(FEATURE_NAMES):
+        print(f"  {idx:2d} {fname:30s} lite={lf[idx]:+7.3f}  full={ff[idx]:+7.3f}")
     print("Training complete!")
 
 

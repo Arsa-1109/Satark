@@ -54,7 +54,7 @@ _LEET_MAP: dict[str, str] = {
 }
 
 _PURE_CODE_RE = re.compile(
-    r"^(?:xx+\d+|\*+\d+|rs\.?\d+|\d{1,4}[a-z]{1,4}|[a-z]{2,}\d{1,5}|[a-z]{1,3}\d{3,}|v\d+(?:\.\d+)*)$",
+    r"^(?:xx+\d+|\*+\d+|rs\.?\d+|\d{1,4}[a-z]{1,4}|[a-z]{2,}\d{1,5}|[a-z]{1,3}\d{3,}|[a-z]{2}\d{2}[a-z]{1,3}\d{4}|\d[a-z]\d{3,4}|[a-z]{1,4}\d{3,}[a-z0-9]*|v\d+(?:\.\d+)*)$",
     re.IGNORECASE,
 )
 
@@ -145,12 +145,12 @@ def normalize_text(text: str, *, validate: bool = True) -> NormalizedResult:
         obfuscations.append("spaced_token")
     working = collapsed
 
-    # Step 6: Token-level leetspeak decode (preserve URLs/emails by skipping tokens inside URLs)
+    # Step 6: Token-level leetspeak decode (preserve URLs, emails, UPI VPAs, and Indian vehicle plates)
     had_leet = False
     url_spans = [
         (m.start(), m.end())
         for m in re.finditer(
-            r"(?:https?://|upi://|www\.)\S+|\b[a-z0-9][a-z0-9\-]*(?:\.[a-z0-9\-]+)*\.[a-z]{2,}/\S+",
+            r"(?:https?://|upi://|www\.)\S+|\b[a-z0-9][a-z0-9\-]*(?:\.[a-z0-9\-]+)*\.[a-z]{2,}/\S+|\b[a-z0-9][a-z0-9._-]*@[a-z0-9][a-z0-9.-]*\b|\b[a-z]{2}[\s-]?\d{2}[\s-]?[a-z]{1,3}[\s-]?\d{4}\b",
             working,
             re.IGNORECASE,
         )

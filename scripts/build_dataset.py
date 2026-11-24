@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import random
 import re
 import sys
@@ -11,14 +12,25 @@ import zipfile
 from pathlib import Path
 
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit, train_test_split
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from satark.mutator import mutate_message  # noqa: E402
 
-DATA_DIR = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\data")
+
+def _resolve_data_dir() -> Path:
+    env_dir = os.environ.get("SATARK_DATA_DIR")
+    if env_dir:
+        return Path(env_dir)
+    default_dir = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\data")
+    if default_dir.parent.exists():
+        return default_dir
+    return ROOT / "data"
+
+
+DATA_DIR = _resolve_data_dir()
 RAW_DIR = DATA_DIR / "raw"
 PROC_DIR = DATA_DIR / "processed"
 
@@ -65,8 +77,13 @@ def _download_uci() -> list[dict]:
 
 
 def _template_skeleton(text: str) -> str:
-    s = text.lower()
+    s = text.lower().strip()
+    s = re.sub(r"upi://pay\?\S+", "<UPI>", s)
     s = re.sub(r"https?://\S+|www\.\S+", "<URL>", s)
+    s = re.sub(r"\b[a-z0-9.\-_]+@[a-z0-9.\-]+\b", "<VPA>", s)
+    s = re.sub(r"\b[a-z]{2}[\s-]?\d{2}[\s-]?[a-z]{1,3}[\s-]?\d{4}\b", "<PLATE>", s)
+    s = re.sub(r"(?:ref#|ticket id:|offer#|batch-|case#|\[id:|\[event |\(ref )\s*[a-z0-9\-]+\]?", "", s)
+    s = re.sub(r"(?:\(\d+\)|\[\d+\]|#\d+)\s*$", "", s)
     s = re.sub(r"\d+", "#", s)
     return re.sub(r"\s+", " ", s).strip()
 
@@ -83,13 +100,24 @@ def _try_hf_indian_datasets() -> list[dict]:
     rows: list[dict] = []
     for repo, weight in candidates:
         try:
-            files = api.list_repo_files(repo_id=repo, repo_type="dataset")
-            data_files = [f for f in files if f.endswith((".csv", ".parquet"))]
-            if not data_files:
-                continue
+            local_repo_dir = RAW_DIR / repo.replace("/", "__")
+            local_files = (
+                [p for p in sorted(local_repo_dir.rglob("*")) if p.is_file() and p.suffix in (".csv", ".parquet")][:2]
+                if local_repo_dir.exists()
+                else []
+            )
+            if not local_files:
+                files = api.list_repo_files(repo_id=repo, repo_type="dataset")
+                data_files = [f for f in files if f.endswith((".csv", ".parquet"))]
+                if not data_files:
+                    continue
+                local_files = [
+                    Path(hf_hub_download(repo_id=repo, filename=df_file, repo_type="dataset", local_dir=local_repo_dir))
+                    for df_file in data_files[:2]
+                ]
             added = 0
-            for df_file in data_files[:2]:
-                local = hf_hub_download(repo_id=repo, filename=df_file, repo_type="dataset", local_dir=RAW_DIR / repo.replace("/", "__"))
+            for local_path in local_files:
+                local = str(local_path)
                 df = pd.read_parquet(local) if local.endswith(".parquet") else pd.read_csv(local)
                 cols = {c.lower(): c for c in df.columns}
                 text_col = cols.get("text") or cols.get("message") or cols.get("sms") or cols.get("v2")
@@ -106,14 +134,14 @@ def _try_hf_indian_datasets() -> list[dict]:
                         if any(k in low_t for k in ("subreddit", "as an ai language model", "pushshift", "dataset of", "thesis")):
                             continue
                     is_scam = 1 if raw_lbl in ("1", "spam", "scam", "fraud", "true") else 0
-                    if is_scam == 1:
-                        continue  # Skip mislabeled retail/promo spam from HF datasets
+                    if is_scam == 1 and "Deysi" in repo:
+                        continue  # Skip noisy retail/promo spam from Deysi; keep Indian scams from scam-ham-india
                     rows.append({
                         "text": txt,
-                        "label": 0,
+                        "label": is_scam,
                         "category": "",
                         "source_corpus": f"hf_{repo}",
-                        "sample_weight": weight,
+                        "sample_weight": weight if is_scam == 0 else 0.45,
                     })
                     added += 1
             print(f"Loaded {added} rows from HF {repo} (weight={weight}).")
@@ -434,6 +462,9 @@ def _generate_hard_negative_safe_corpus() -> list[dict]:
         "Airtel: While your number was unreachable, you received {n} missed call(s). Check the Airtel Thanks app for details.",
         "BSNL: {n} calls were missed while your mobile was not reachable on {date}. Dial *121# for details.",
         "Jio: {ph} is now available to take your call. You had tried calling earlier.",
+        "{n} missed call(s) received on {date} while your Airtel number was not reachable. Check details on Airtel App - https://i.airtel.in/missed_{n}",
+        "Jio Missed Call Alert: {n} call(s) missed on {date}. View caller log on MyJio App - https://jio.com/missed/{n}",
+        "Vi Alert: {n} missed call(s) when your phone was switched off on {date}. Check only on Vi App - https://vi.in/calls/{n}",
     ]
     for i in range(150):
         tpl = telecom_templates[i % len(telecom_templates)]
@@ -533,6 +564,8 @@ def _generate_hard_negative_safe_corpus() -> list[dict]:
         "Your {brand} Plus membership has been renewed for 12 months. View invoice and benefits in your account settings.",
         "Good news! Your refund of Rs {amt}.00 for cancelled order #{ord_id} has been processed to your original payment method.",
         "Hi {name}, your cashback of Rs {amt} from {brand} Pay for your recent utility bill is now available in your wallet balance.",
+        "{brand} Pay: Rs {amt} cashback has been credited to your {brand} Pay balance for your electricity bill payment.",
+        "Cashback Credited: Rs {amt} added to your {brand} wallet for completing your broadband recharge.",
     ]
     support_brands = ["Swiggy", "Zomato", "Zepto", "BigBasket", "Amazon", "Flipkart", "Uber", "Ola"]
     for i in range(200):
@@ -730,6 +763,20 @@ def _generate_hard_negative_safe_corpus() -> list[dict]:
         "Hungry? Order {cat} from {brand} & get Flat Rs {amt} OFF + Free delivery above Rs 199! Shop: {surl}{i}",
         "Weekend Flash Sale at {brand}! Minimum {disc}% OFF on {cat}. Visit nearest store or {surl}{i} TnC",
         "{brand} Mega Offer! Extra Rs {amt} OFF on {cat} with code {code}. Valid today only! {surl}{i} T&C apply",
+        "Special {brand} Deal: Flat {disc}% off on {cat} all week! Apply {code} at checkout: {surl}{i} T&C",
+        "Celebrate with {brand}! Buy 2 get 1 FREE on {cat}. Order online via {surl}{i} or visit outlet. TnC",
+        "Limited period offer at {brand}: Save Rs {amt} on {cat} orders above Rs 599. Shop now: {surl}{i} TnC apply",
+        "{brand} Member Exclusive: Extra {disc}% savings on {cat} this Friday! Redeem at {surl}{i}",
+        "Just dropped at {brand}! Fresh {cat} starting Rs {amt}. Explore collection: {surl}{i} T&C apply",
+        "Craving {cat}? {brand} brings Flat Rs {amt} OFF today! Use {code} & order here: {surl}{i}",
+        "{brand} Super Saver: Up to {disc}% OFF on {cat} + instant bank discount. Check deals: {surl}{i} TnC",
+        "Happy Hours at {brand}! Get {disc}% off on {cat} from 4 PM to 8 PM. Book/Order: {surl}{i}",
+        "Festive Collection from {brand}: Flat {disc}% OFF on {cat} + free shipping. Visit {surl}{i} T&C apply",
+        "{brand} Flash Drop! Grab {cat} at flat Rs {amt} off with code {code}. Valid tonight only: {surl}{i} TnC",
+        "Today only! Double your {brand} meal. Buy 4 pcs combo and get 4 pcs sides... FREE! Don't miss this... grab now! {surl}{i} TnC",
+        "{brand} Festive Sale! Up to {disc}% OFF on {cat} + No Cost EMI. Visit {brand} store or {surl}{i} TnC",
+        "{brand}: Newly launched {cat} at Rs {amt}! Limited stock launch price today only. Grab yours now: {surl}{i} T&C",
+        "{brand} Flash Deal! Up to {disc}% OFF on {cat} + 10% Bank Cashback. Check store or {surl}{i} TnC",
     ]
     ad_templates_plain = [
         "Craving {cat}? Get Flat {disc}% OFF on {brand} up to Rs {amt}! Use code {code}. Valid today only! T&C apply",
@@ -753,6 +800,172 @@ def _generate_hard_negative_safe_corpus() -> list[dict]:
         rows.append({"text": txt, "label": 0, "category": "", "source_corpus": "hard_neg_commercial_ads", "sample_weight": 1.8})
 
     return rows
+
+
+def _generate_diverse_modern_scams() -> list[dict]:
+    """Diverse natural-language Indian & global social-engineering scams (no rigid 40x template clones)."""
+    rng = random.Random(SEED + 7)
+    items: list[tuple[str, str]] = [
+        # 1. Phishing on abusable legitimate platforms (forms.gle, docs.google.com, github.io, sites.google.com)
+        ("KYC/Bank", "HDFC Bank Notice: Re-confirm your PAN & mobile number within 24 hrs via https://forms.gle/hdfcPanVerify99 or netbanking will be paused."),
+        ("KYC/Bank", "SBI YONO Alert: Complete mandatory Aadhaar-PAN re-KYC today at https://docs.google.com/forms/d/e/1FAIpQLSf_sbi_kyc_form/viewform"),
+        ("KYC/Bank", "Axis Bank Security: Your debit card has been temporarily frozen. Submit verification details on https://axis-portal-check.github.io/auth"),
+        ("KYC/Bank", "ICICI Account Desk: Update your registered email and ATM PIN details at https://sites.google.com/view/icici-kyc-helpdesk"),
+        ("Job/Investment", "Congratulations! Shortlisted for Amazon Remote Operations Intern (Rs 35,000/mo). Pay Rs 499 onboarding verification on https://forms.gle/amzInternFee"),
+        ("KYC/Bank", "Income Tax India: Pending TDS refund of Rs 11,480 detected. Submit bank account and IFSC on https://docs.google.com/forms/d/e/itr_claim_2026"),
+        ("Job/Investment", "Flipkart Work-From-Home Hiring: Fill your UPI ID and Rs 250 registration fee at https://forms.gle/fkWfhApply26 to start earning today."),
+        ("Other", "BSES Electricity Desk: Submit your consumer number and bill receipt on https://forms.gle/bsesReconnect to stop disconnection tonight."),
+        # 2. Pig-butchering / crypto / gold / quant investment scams
+        ("Job/Investment", "Hey, we met briefly at the Bengaluru fintech summit last month. I trade gold futures with an institutional signal group making 15-20% monthly—want me to show you my dashboard?"),
+        ("Job/Investment", "Hi! My cousin is a senior analyst at a Hong Kong quant desk and shares private USDT arbitrage entries. Try starting with Rs 15,000 on our platform and see the profit yourself."),
+        ("Job/Investment", "Hello friend, sorry wrong number—btw I am an investment advisor in Singapore. If you have spare savings I can guide you on forex liquidity mining for steady weekly returns."),
+        ("Job/Investment", "Join our private Nifty & BankNifty options mentorship desk. Our AI bot has 94% win rate; deposit Rs 10,000 capital to copy trades automatically."),
+        ("Job/Investment", "Airdrop live: Connect your TrustWallet or MetaMask at https://eth-bonus-drop.net to claim 1,800 USDT governance reward before snapshot closes."),
+        ("Job/Investment", "Claim your Solana ecosystem loyalty airdrop of 45 SOL! Approve wallet signature at https://sol-airdrop-portal.xyz within 3 hours."),
+        ("Job/Investment", "Hey! Saw your LinkedIn—I run a private crypto arbitrage desk in Dubai delivering 12-18% monthly yield. Happy to share my live P&L if you want to test with Rs 5,000."),
+        ("Job/Investment", "Hi, sorry if this is random—I got your contact from a Delhi startup mixer. My mentor manages an automated forex & bullion pool giving 4% weekly returns, interested?"),
+        ("Job/Investment", "Good evening! My sister works at a quantitative trading firm in Singapore and gives me daily BTC/USDT entry signals. Start with just Rs 8,000 on our exchange app."),
+        ("Job/Investment", "Exclusive invite: Join our institutional gold & crude oil MCX signal room. Members double capital every 45 days—deposit Rs 10,000 to activate copy trading."),
+        ("Job/Investment", "Hey dear, I am an angel investor based in London. I teach friends how to earn steady passive income from Web3 liquidity pools—want me to walk you through it?"),
+        ("Job/Investment", "Hello! Are you open to an automated crypto futures strategy? Minimum capital is only Rs 5,000 and profits are withdrawable daily to UPI."),
+        ("Job/Investment", "Hi there, my uncle is a senior market maker and shares pre-IPO & USDT insider allocations. Put Rs 12,000 in our test pool today to see guaranteed gains."),
+        ("Job/Investment", "Private Wealth Desk: Earn 20% monthly fixed return on digital gold & USDT staking. Zero risk, backed by Singapore liquidity pool. Reply YES for link."),
+        ("Job/Investment", "Hey, I made Rs 1.8 lakh this month trading ETH options using a private Telegram signal bot. Let me add you to the VIP trial group today."),
+        ("Job/Investment", "Looking for serious partners for high-yield crypto arbitrage. Deposit Rs 10,000, earn Rs 2,500 daily profit directly to your bank."),
+        ("Job/Investment", "Hi! I am a portfolio analyst in Hong Kong. Our AI quantitative desk has 92% accuracy on gold futures—want to see yesterday's profit statement?"),
+        ("Job/Investment", "Join our VIP Forex & Crypto Insider Circle. Get 15% guaranteed weekly returns on USDT deposits starting Rs 5,000."),
+        # 3. BEC / Boss / Colleague gift-card & urgent wire scams
+        ("Other", "Hi, this is Vikram (MD). I am in a confidential investor meeting and cannot answer calls. Can you purchase 4 Apple gift cards of Rs 5,000 each and email me the redemption codes asap?"),
+        ("Other", "Urgent request from Director's office: Please process an immediate NEFT of Rs 48,000 to vendor account 9988776655@ybl, I will approve the voucher once I land."),
+        ("Other", "Hey, I am stuck in a client presentation and need a quick favor—buy 3 Google Play gift vouchers worth Rs 10,000 total and WhatsApp the PINs to me right away."),
+        ("Other", "Hi, this is Ananya (VP Finance). I am boarding a flight and cannot access corporate banking. Urgently buy 5 Amazon Pay e-gift cards of Rs 5,000 each and send the codes."),
+        ("Other", "Quick favor from CEO desk: Need Rs 25,000 worth of Flipkart gift vouchers for an urgent client appreciation—send codes to this email, will reimburse tomorrow."),
+        # 4. Family / friend emergency impersonation
+        ("Other", "Beta my debit card stopped working at Mumbai airport and I have to pay for my boarding upgrade right now. Transfer Rs 14,000 to my colleague's PhonePe 9820112233 immediately."),
+        ("Other", "Mom my phone fell in water and screen is dead, texting from a friend's mobile. Doctor needs Rs 9,500 advance right now, please GPay to 9811998877@okaxis."),
+        ("Other", "Bhai urgent medical emergency at Apollo, my UPI daily limit is exhausted. Can you send Rs 12,000 to dr.helpdesk@ybl right now? Will return tonight."),
+        ("Other", "Yaar I mistakenly transferred Rs 8,500 to your UPI instead of my sister. Please refund it back to 9765432109@paytm urgently, she needs it for college fees."),
+        ("Other", "Sir by mistake I sent Rs 6,000 to your Google Pay number. Kindly return it to 9123004455@oksbi, my father is admitted in ICU."),
+        ("Other", "Brother I accidentally sent Rs 3,500 to your UPI while paying electricity bill. Kindly send it back to arun.k99@ybl right now, facing penalty."),
+        ("Other", "Hello, I sent Rs 5,200 by mistake to your PhonePe number. Please transfer it back to 9870112233@okicici urgently, my train is leaving."),
+        # 5. Fake e-commerce refund / customer care phishing
+        ("KYC/Bank", "Flipkart Support: Your refund of Rs 3,299 for cancelled order could not be credited. Complete bank verification at https://flipkart-refund-care.in/claim"),
+        ("KYC/Bank", "Amazon Customer Desk: Your Rs 4,999 return pickup refund is on hold. Enter card details to receive instant credit at https://amz-refund-portal.com"),
+        ("KYC/Bank", "Myntra Refund Dept: Order #MY9921 failed at gateway. Click https://myntra-instant-refund.in/verify to push money back to your account."),
+        ("KYC/Bank", "Meesho Payout: Your COD refund of Rs 1,450 is pending. Accept collect request or verify UPI at https://meesho-cashback-desk.site"),
+        # 6. Customs / DHL / FedEx / Courier & e-Challan / RTO scams
+        ("Other", "DHL Express India: Shipment #449102 is detained by Mumbai Customs for restricted goods. Pay Rs 4,500 clearance penalty within 4 hours or FIR will be filed."),
+        ("Other", "FedEx Compliance: A parcel booked with your Aadhaar contains 4 passports and MDMA. Appear for Cyber Police video verification immediately or call 9811002233."),
+        ("Other", "Traffic Police e-Challan: Vehicle MH12AB3456 has pending fine of Rs 1,500. Settle today at https://echallan-parivahan-pay.org to avoid license suspension."),
+        ("Other", "RTO Notice: Vehicle DL04CA8821 caught on speed camera. Pay Rs 2,000 penalty via https://rto-challan-online.in before court summons is issued."),
+        # 7. Plain utility disconnection threats (no brand name or URL)
+        ("Other", "Dear consumer, your electricity connection will be disconnected tonight at 9:30 PM due to non-updation of last month bill. Contact billing officer on 9833445566."),
+        ("Other", "Warning: Your piped gas supply will be cut off today at 8 PM because your bill payment did not reflect. Call our helpline 9711223344 immediately."),
+        ("Other", "Water board final alert: Your home water meter will be disconnected tomorrow morning unless you verify receipt with supervisor 9900887766."),
+        # 8. Sextortion / Loan-app blackmail
+        ("Other", "We recorded your private video call last night. Transfer Rs 20,000 to 9844556677@ybl within 1 hour or we will upload it to YouTube and send it to all your contacts."),
+        ("Other", "Your CashNow instant loan of Rs 6,000 is overdue by 1 day. Pay Rs 11,500 immediately to 9899001122@paytm or we will share your edited photos with your family contacts."),
+        # 9. Social-engineered OTP / SIM swap / eSIM scams
+        ("KYC/Bank", "SBI Fraud Prevention: A suspicious transaction of Rs 38,500 is underway on your card. Read me the 6 digit code you just received to block it immediately."),
+        ("KYC/Bank", "HDFC Security Desk: Someone tried logging into your NetBanking. Tell us the 6-digit verification code sent to your phone to cancel the request."),
+        ("KYC/Bank", "Jio Telecom Alert: Your physical SIM to eSIM conversion request is queued. If not initiated by you, forward the 6 digit confirmation code immediately to stop it."),
+        ("KYC/Bank", "Airtel eSIM Notice: Your number will be ported in 2 hours. Reply with the 4 digit security code received via SMS to abort deactivation."),
+        # 10. Fake charity / govt free recharge / OLX QR / Raw IP / upi://pay
+        ("Other", "Urgent medical appeal: 3-year-old child needs Rs 4 lakh heart operation tonight at AIIMS. Please donate via UPI to savechild99@ybl and forward."),
+        ("Lottery/Prize", "PM Free 5G Recharge Yojana 2026: Every citizen gets 84 days free unlimited data! Activate now at https://pm-free-recharge-yojana.in"),
+        ("Lottery/Prize", "Government Laptop & Scholarship Scheme: Claim free Rs 25,000 student grant today at https://gov-student-grant.online/apply"),
+        ("Other", "I am an Army officer posted in Pune and want to buy your fridge on OLX for Rs 14,000. Scan my QR code and enter your UPI PIN to receive the advance."),
+        ("KYC/Bank", "Urgent: Your bank KYC is suspended. Verify immediately at http://103.24.77.19/sbi-kyc to restore netbanking."),
+        ("KYC/Bank", "Alert: PAN card not linked to bank account. Update at http://45.118.132.5/pan-update today."),
+        ("Lottery/Prize", "Cashback Reward! Claim Rs 5,000 Amazon Pay bonus via upi://pay?pa=claim-bonus@ybl&pn=Reward&am=1499&cu=INR now."),
+        ("Other", "Hello, we are hiring part-time freelancers to rate hotels and restaurants on Maps. Earn Rs 2,000 to Rs 4,500 daily from home. Reply YES if interested."),
+        ("Job/Investment", "Remote opportunity: Review travel listings for 30 mins a day and get Rs 3,000 daily payout via UPI. Message back for onboarding."),
+        ("Other", "Namaste, sending our family wedding invitation card file. Please download and open ShaadiCard_2026.apk to see venue location."),
+    ]
+    rows: list[dict] = []
+    # Add light organic variations (2-3x per item with varied codes/amounts, never 40x clones)
+    for idx, (cat, txt) in enumerate(items):
+        rows.append({"text": txt, "label": 1, "category": cat, "source_corpus": "indian_modern_scam", "sample_weight": 1.4})
+        # Create 2 paraphrased/slot-varied siblings with different amounts/phones/urls
+        for v in range(2):
+            varied = txt
+            varied = re.sub(r"\b9\d{9}\b", f"9{rng.randint(100000000, 999999999)}", varied)
+            varied = re.sub(r"Rs\.?\s*[\d,]+", f"Rs {rng.choice([1800, 3500, 7500, 16000, 28000])}", varied)
+            if varied != txt:
+                rows.append({"text": varied, "label": 1, "category": cat, "source_corpus": "indian_modern_scam", "sample_weight": 1.2})
+    return rows
+
+
+def _generate_diverse_tricky_safe() -> list[dict]:
+    """Diverse natural-language tricky SAFE messages (urgent work, friend VPAs, sub-brands, neutral chats)."""
+    items: list[str] = [
+        # Urgent work / academic / personal (must NOT trigger on 'urgent' / 'final warning' / 'immediately')
+        "URGENT: Staging API is returning 502 errors and client demo is in 20 minutes! Join the Google Meet immediately.",
+        "Urgent: Production database CPU hit 98%, please check the deployment logs right now.",
+        "URGENT: Payment gateway webhook is failing in prod, join the war-room bridge immediately!",
+        "Urgent: CI pipeline is broken on main and release cut is in 15 minutes, please revert the last PR.",
+        "URGENT: Client presentation starts in 10 mins and the slide deck link needs edit access immediately.",
+        "Final warning from Prof. Verma: Upload your Operating Systems lab report before 11:59 PM tonight or it will be marked zero.",
+        "Final notice from Hostel Office: Clear your mess dues by Friday 5 PM at the accounts counter.",
+        "Final reminder from Library: Return overdue textbooks before 4 PM today to avoid late fine.",
+        "Hey, please call me urgently on 9876501234 regarding tomorrow's project presentation.",
+        "Urgent reminder: Team standup moved to 10:15 AM today, please join on time.",
+        "Please call me on 9811224455 when you reach the metro station.",
+        "Give me a call on 9740112233 once you are free after class.",
+        "Reach out to me on 9900112244 when you get to the main lobby.",
+        "Hey, ping or call me on 9845001122 when the cab arrives at the gate.",
+        "Call 9820334455 when you are outside the apartment building.",
+        "Could you call me on 9886112233 before 5 PM to confirm the dinner plan?",
+        "Just reached the office—call me on 9739001122 so I can buzz you in.",
+        "Hey, call Riya on 9810223344 once you pick up the printout.",
+        "Please ring me on 9945112233 when you are near the auditorium.",
+        "Call me on 9871002233 if you need the Wi-Fi password for the conference room.",
+        # Friend / family money splits & VPAs (must NOT confuse with UPI scams)
+        "Hey can you send me the 850 for last night's pizza whenever you get a chance? No hurry.",
+        "Here is my UPI ID for the Coorg trip split: rohit.k@okaxis, everyone's share is Rs 2,800.",
+        "Bro my UPI id is aditya98@oksbi, transfer the 1,500 for movie tickets whenever free.",
+        "Thanks! Received the 600 on GPay, see you on Monday.",
+        "Did you pay the WiFi bill yet? My share is 450, sending it to your Paytm.",
+        # Legitimate financial / insurance / bank sub-brand & periodic KYC advisories
+        "HDFC ERGO: Your two-wheeler insurance policy expires on 20 Dec 2026. Renew online at hdfcergo.com to keep your 25% No Claim Bonus.",
+        "ICICI Lombard: Reminder to renew your health cover on icicilombard.com before 31 Dec to retain continuity benefits.",
+        "SBI Life: Your annual policy premium of Rs 18,500 is due next week. Pay securely on sbilife.co.in or official app.",
+        "Axis Bank: Your auto-debit of Rs 499 for YouTube Premium could not be processed due to low balance. Please fund your account.",
+        "Dear Customer, as per RBI norms periodic KYC updation is due for your SBI account. Visit your home branch or use the official YONO app.",
+        "HDFC Bank: Periodic KYC review is due for your savings account. Please update via NetBanking or visit your nearest HDFC Bank branch.",
+        "BESCOM: Your electricity bill of Rs 1,420 for Account ID 772910 is due on 29 Nov. Pay via BESCOM Mitra app or BBPS.",
+        "MSEDCL: Bill for Oct 2026 of Rs 2,150 is generated. Pay on mahadiscom.in or authorized BBPS apps.",
+        # Legitimate prizes / bonuses / achievements
+        "Congratulations! Your team ByteCraft won 1st prize (Rs 40,000) at the National Hackathon. Collect your trophy at Auditorium B at 5 PM.",
+        "Congrats Rahul! You won the department coding quiz prize of Rs 5,000. Check your college email for certificate details.",
+        "Congratulations! Your project won 2nd place (Rs 25,000) at the college AI innovation challenge. Awards ceremony is at 3 PM.",
+        "Congrats! Your robotics team won the inter-college championship prize of Rs 30,000. Collect certificates from Dean's office.",
+        "Congratulations Ananya! You won 1st prize in the annual photography contest. Visit Student Activity Center to collect your award.",
+        "Well done! Your hackathon squad won Best Prototype (Rs 15,000) at TinyVerse Demo Day. Meet the organizers at Hall A.",
+        "HR Update: Your annual performance bonus of Rs 35,000 has been approved and will be credited along with November salary.",
+        "Payroll Notice: Your Q3 spot bonus of Rs 10,000 will reflect in this month's salary slip.",
+        "Congratulations! You have been awarded the Merit Scholarship of Rs 20,000 for Semester 6. Check the university notice board.",
+        # Legitimate recruiters, small brands, clinic, OTPs, neutral chats
+        "Hi Arsalan, I am a technical recruiter at Razorpay. Saw your open-source work on GitHub and would love to schedule a 25-min intro call.",
+        "Hello! This is Sneha from Swiggy Talent Acquisition regarding your Backend Engineer application. Are you free for a call tomorrow?",
+        "Flat 25% off on single-origin coffee beans at Third Wave Coffee this weekend! Order at https://thirdwavecoffeeroasters.com",
+        "Flat 30% off on freshly roasted beans at Blue Tokai! Shop at https://bluetokaicoffee.com/collections/all",
+        "Reminder: Your physiotherapy session at Apollo Clinic Koramangala is tomorrow at 4 PM. Call 080-22334455 to reschedule.",
+        "619204 is your verification code for Blinkit. Valid for 5 minutes.",
+        "482910 is your login OTP for Zepto.",
+        "Your parcel from Meesho is arriving today between 1 PM and 5 PM. Keep Rs 499 cash ready.",
+        "BlueDart: We attempted delivery today but the door was locked. We will re-attempt tomorrow morning.",
+        "Reminder: Last date to pay semester tuition fees without late fine is 30 Nov via the student ERP portal.",
+        "Hello, how are you doing today?",
+        "Good morning! Are we still meeting for coffee at 6 PM?",
+        "Let us meet outside Indiranagar metro station at 7 PM.",
+        "Did you push the latest fix to the main branch? Tests are still running.",
+        "Ok thanks!",
+        "Sure, sounds good.",
+        "Happy birthday! Have a great year ahead.",
+        "On my way, reaching in 10 mins.",
+    ]
+    return [{"text": t, "label": 0, "category": "", "source_corpus": "hard_neg_diverse_safe", "sample_weight": 1.6} for t in items]
 
 
 def _build_realworld_stress_suite() -> list[dict]:
@@ -945,34 +1158,100 @@ def _build_ads_safe_suite() -> list[dict]:
     return [{"text": t, "label": 0, "category": "", "source_corpus": "ads_safe_suite", "sample_weight": 1.0} for t in msgs]
 
 
+def _build_blind_generalization_suite() -> list[dict]:
+    """Strictly blind 50-message Real-World Generalization Suite (Gate G15: 25 SCAM, 25 SAFE)."""
+    items = [
+        # 25 SCAM (subtly phrased, abusable hosts, social engineering, zero template overlap)
+        (1, "KYC/Bank", "Dear SBI Customer, please update your PAN and Aadhaar details before 5 PM to avoid account restriction: https://forms.gle/sbiKyc2026"),
+        (1, "Job/Investment", "Selected for Google WFH Internship! Fill your bank account and registration fee details here: https://forms.gle/googleIntern26"),
+        (1, "KYC/Bank", "Your HDFC netbanking session expired. Verify your credentials at https://hdfc-verify.github.io/login"),
+        (1, "KYC/Bank", "Income tax refund of Rs 14,200 is pending. Submit bank details on https://docs.google.com/forms/d/e/fake-itr"),
+        (1, "Job/Investment", "Hi, I got your number from a business conference in Mumbai. I run an automated gold futures desk giving 18% monthly returns, want to see my P&L?"),
+        (1, "Job/Investment", "Hey dear, my uncle works at a Singapore quant fund and gave me insider USDT signals. Put just 10000 rupees on our platform to test it out today."),
+        (1, "Other", "Hi this is Rajesh (CEO). I am stuck in a board meeting and cannot take calls. Can you urgently buy 5 Amazon gift cards worth Rs 10,000 each and email me the codes?"),
+        (1, "Other", "Beta my ATM card got blocked at the airport and I need to pay for the ticket right now. Send 18000 to my colleague number 9845112233 on PhonePe immediately."),
+        (1, "Other", "I want to buy your laptop listed on OLX for 35000. Sending you a Rs 5000 advance token on GPay, just click Accept and enter your PIN to receive it."),
+        (1, "KYC/Bank", "Hello sir, we are calling from Myntra refund department. Your Rs 2,499 order failed, click this link to claim refund directly to your card: https://myntra-refunds-desk.in/claim"),
+        (1, "Other", "Your DHL shipment #882910 has been stopped at Mumbai customs due to undeclared items. Pay clearance charge of Rs 3,800 within 6 hours or case will be handed to police."),
+        (1, "Other", "Your vehicle KA03MN4821 has an unpaid e-challan of Rs 2000. Pay immediately via https://parivahan-echallan-pay.org to avoid court summons."),
+        (1, "Other", "Dear consumer your power supply will be stopped today at 10 pm because previous month bill was not updated. Message billing desk on 9871234560."),
+        (1, "Other", "We have screenshots of your video call from last night. If you do not transfer Rs 15000 within 2 hours we will upload it on YouTube and send to your Instagram followers."),
+        (1, "KYC/Bank", "Hello I am calling from SBI card protection team. A fraudulent charge of Rs 49,000 is being processed on your card. Read me the 6 digit code you just received to cancel it."),
+        (1, "Other", "Namaste uncle, sending you my sister wedding card file here. Please open WeddingInvitation.apk to see venue map and timings."),
+        (1, "KYC/Bank", "Sir aapka account hold pe chala gaya hai, abhi apna pan card aur debit card photo bhejo warna kal se transaction band ho jayega."),
+        (1, "Other", "Your instant cash loan of Rs 8000 is overdue. Pay Rs 14500 right now to 9911223344@ybl or we will send your morphed photos to your entire contact list."),
+        (1, "Other", "Bro I sent 4000 to your number by mistake while paying rent, please return it to vikram99@oksbi asap my landlord is waiting."),
+        (1, "Job/Investment", "Hello! Looking for remote freelancers to rate hotels and restaurants on Maps. Flexible 1 hour daily, payout 1500 to 4000 INR per day. Text me back if interested."),
+        (1, "Job/Investment", "Congratulations! Your wallet is eligible for 2500 USDT airdrop. Connect your MetaMask wallet and approve claim at https://airdrop-claim-eth.net"),
+        (1, "KYC/Bank", "Airtel Alert: Your SIM upgrade request to eSIM has been received. If not requested by you, forward the 6 digit confirmation code immediately to cancel."),
+        (1, "Other", "Urgent appeal: 4 year old baby needs Rs 5 lakh heart surgery tonight at AIIMS. Please donate whatever you can to helpbaby@ybl and share."),
+        (1, "Lottery/Prize", "PM Free Recharge Yojana 2026! Every Indian citizen gets 3 months free 5G recharge. Claim on https://free-5g-yojana.in/apply"),
+        (1, "KYC/Bank", "Final reminder from Income Tax Department: discrepancy found in AY 2025-26 filing. Settle penalty of Rs 4,500 at https://efiling-tax-india.com today."),
+        # 25 SAFE (tricky urgent/prize/finance/VPA + neutral everyday messages)
+        (0, "", "URGENT: The production server is down and the client demo starts in 30 minutes! Please join the Zoom call immediately."),
+        (0, "", "Final warning from Prof. Sharma: Submit your compiler design assignment before 11:59 PM tonight or you will get zero marks."),
+        (0, "", "Hey can you pay me back the 1200 for last night dinner whenever you get a chance? No rush."),
+        (0, "", "Hey sending you my UPI id for the Goa trip split: arsalan.dev@okaxis, total comes to Rs 3,400 per person."),
+        (0, "", "Flat 30% off on specialty coffee beans at Blue Tokai this weekend! Order at https://bluetokaicoffee.com/collections/all"),
+        (0, "", "Axis Bank: Your auto-debit of Rs 649 for Netflix failed due to insufficient balance. Please fund your account to avoid disruption."),
+        (0, "", "Dear Customer, as per RBI guidelines periodic KYC renewal is due for your SBI account. Please visit your nearest SBI branch or use the official YONO app."),
+        (0, "", "Reminder: Your dental checkup at Clove Dental Indiranagar is tomorrow at 5 PM. Call 080-41234567 to reschedule."),
+        (0, "", "Hi Arsalan, I am a technical recruiter at Atlassian. Saw your GitHub profile and would love to schedule a 30-min chat for a Backend Engineer role. Let me know your availability."),
+        (0, "", "482910 is your verification code for Zepto. Valid for 5 minutes."),
+        (0, "", "Your parcel from Meesho is arriving today between 2 PM and 6 PM. Keep Rs 599 ready for Cash on Delivery."),
+        (0, "", "Hello, how are you doing today?"),
+        (0, "", "Let us meet at the cafe near MG Road metro station at 6 PM."),
+        (0, "", "Did you push the latest commit to the main branch? CI is still running."),
+        (0, "", "Thanks!"),
+        (0, "", "Reminder: Last date to pay semester tuition fees without late fine is 30 Nov. Pay through the student ERP portal."),
+        (0, "", "HDFC ERGO: Your motor insurance policy expires on 15 Dec 2026. Renew online on hdfcergo.com to retain your 20% No Claim Bonus."),
+        (0, "", "Congratulations! Your team Satark won 1st prize (Rs 50,000) at the campus hackathon. Collect your certificate at the auditorium at 4 PM."),
+        (0, "", "BESCOM: Your electricity bill of Rs 1,840 for RR No 482910 is due on 28 Nov. Pay via BESCOM Mitra app or BBPS."),
+        (0, "", "BlueDart: We attempted to deliver your shipment today but the premises were locked. We will re-attempt tomorrow."),
+        (0, "", "Please call me on 9876543210 when you reach the office gate."),
+        (0, "", "Good morning! Did you get a chance to review the PR?"),
+        (0, "", "Swiggy: Your order from Meghana Foods is being prepared and will arrive in 25 mins."),
+        (0, "", "Your train 12657 departs from KSR Bengaluru at 10:40 PM tonight from Platform 3."),
+        (0, "", "Can you share the Google Meet link for the 4 PM sync?"),
+    ]
+    return [{"text": t, "label": lbl, "category": cat, "source_corpus": "blind_generalization", "sample_weight": 1.0} for lbl, cat, t in items]
+
+
 def main() -> None:
     PROC_DIR.mkdir(parents=True, exist_ok=True)
     uci_rows = _download_uci()
     hf_rows = _try_hf_indian_datasets()
     scam_rows = _generate_indian_scam_corpus()
+    modern_scam_rows = _generate_diverse_modern_scams()
     safe_hn_rows = _generate_hard_negative_safe_corpus()
+    tricky_safe_rows = _generate_diverse_tricky_safe()
     stress_rows = _build_realworld_stress_suite()
     ood_rows = _build_ood_safe_suite()
     tx_promo_rows = _build_transactional_promo_suite()
     blind_multi_rows = _build_blind_multilingual_suite()
     ads_safe_rows = _build_ads_safe_suite()
+    blind_gen_rows = _build_blind_generalization_suite()
 
-    # Anti-leakage: exclude samples.txt and all held-out test suites
-    excluded_keys = {_dedup_key(r["text"]) for r in stress_rows + ood_rows + tx_promo_rows + blind_multi_rows + ads_safe_rows}
+    # Anti-leakage: exclude samples.txt and all held-out test suites (exact + template skeleton for G15)
+    heldout_all = stress_rows + ood_rows + tx_promo_rows + blind_multi_rows + ads_safe_rows + blind_gen_rows
+    excluded_keys = {_dedup_key(r["text"]) for r in heldout_all}
+    excluded_gen_skeletons = {_template_skeleton(r["text"]) for r in blind_gen_rows}
     samples_path = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\samples.txt")
     if samples_path.exists():
         for m in samples_path.read_text(encoding="utf-8").split("\n\n"):
             if m.strip():
                 excluded_keys.add(_dedup_key(m))
 
-    all_rows = uci_rows + hf_rows + scam_rows + safe_hn_rows
+    all_rows = uci_rows + hf_rows + scam_rows + modern_scam_rows + safe_hn_rows + tricky_safe_rows
 
     seen: set[str] = set(excluded_keys)
     deduped: list[dict] = []
     for r in all_rows:
         key = _dedup_key(r["text"])
-        if key and key not in seen:
+        skel = _template_skeleton(r["text"])
+        if key and key not in seen and skel not in excluded_gen_skeletons:
             seen.add(key)
+            r["skeleton"] = skel
             deduped.append(r)
 
     df = pd.DataFrame(deduped)
@@ -986,15 +1265,23 @@ def main() -> None:
     hn_train_val, test_hard_neg = train_test_split(hn_df, test_size=300, random_state=SEED, stratify=hn_df["source_corpus"])
     pool_df = pd.concat([rest_df, hn_train_val], ignore_index=True)
 
-    strat_key = pool_df["label"].astype(str) + "_" + pool_df["category"].fillna("")
-    vc = strat_key.value_counts()
-    strat_key = strat_key.where(strat_key.map(vc) >= 4, pool_df["label"].astype(str))
+    # Group-based anti-leakage split by _template_skeleton so no template family leaks across train/val/test_unseen
+    gss1 = GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=SEED)
+    tr_idx, tmp_idx = next(gss1.split(pool_df, pool_df["label"], groups=pool_df["skeleton"]))
+    train_df = pool_df.iloc[tr_idx].reset_index(drop=True)
+    temp_df = pool_df.iloc[tmp_idx].reset_index(drop=True)
 
-    train_df, temp_df = train_test_split(pool_df, test_size=0.30, random_state=SEED, stratify=strat_key)
-    temp_strat = temp_df["label"].astype(str) + "_" + temp_df["category"].fillna("")
-    vc2 = temp_strat.value_counts()
-    temp_strat = temp_strat.where(temp_strat.map(vc2) >= 2, temp_df["label"].astype(str))
-    val_df, test_unseen = train_test_split(temp_df, test_size=0.50, random_state=SEED, stratify=temp_strat)
+    gss2 = GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=SEED)
+    va_idx, te_idx = next(gss2.split(temp_df, temp_df["label"], groups=temp_df["skeleton"]))
+    val_df = temp_df.iloc[va_idx].reset_index(drop=True)
+    test_unseen = temp_df.iloc[te_idx].reset_index(drop=True)
+
+    # Keep only standard columns in CSVs
+    keep_cols = ["text", "label", "category", "source_corpus", "sample_weight"]
+    train_df = train_df[keep_cols]
+    val_df = val_df[keep_cols]
+    test_unseen = test_unseen[keep_cols]
+    test_hard_neg = test_hard_neg[keep_cols]
 
     unseen_scams = test_unseen[(test_unseen["label"] == 1) & (test_unseen["category"] != "")]
     adv_sample = unseen_scams.sample(n=min(160, len(unseen_scams)), random_state=SEED).copy()
@@ -1010,6 +1297,7 @@ def main() -> None:
     tx_df = pd.DataFrame(tx_promo_rows)
     multi_df = pd.DataFrame(blind_multi_rows)
     ads_df = pd.DataFrame(ads_safe_rows)
+    gen_df = pd.DataFrame(blind_gen_rows)
 
     train_df.to_csv(PROC_DIR / "train.csv", index=False)
     val_df.to_csv(PROC_DIR / "val.csv", index=False)
@@ -1021,6 +1309,7 @@ def main() -> None:
     tx_df.to_csv(PROC_DIR / "test_transactional_safe.csv", index=False)
     multi_df.to_csv(PROC_DIR / "test_blind_multilingual.csv", index=False)
     ads_df.to_csv(PROC_DIR / "test_ads_safe.csv", index=False)
+    gen_df.to_csv(PROC_DIR / "test_blind_generalization.csv", index=False)
 
     print("Saved splits to", PROC_DIR)
     for name, part in (
@@ -1034,8 +1323,9 @@ def main() -> None:
         ("test_transactional_safe.csv", tx_df),
         ("test_blind_multilingual.csv", multi_df),
         ("test_ads_safe.csv", ads_df),
+        ("test_blind_generalization.csv", gen_df),
     ):
-        print(f"  {name:26s}: {len(part):5d} rows (scam={int((part['label']==1).sum())}, safe={int((part['label']==0).sum())})")
+        print(f"  {name:30s}: {len(part):5d} rows (scam={int((part['label']==1).sum())}, safe={int((part['label']==0).sum())})")
 
 
 if __name__ == "__main__":

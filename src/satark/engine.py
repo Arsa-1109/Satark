@@ -70,6 +70,68 @@ def _forensic_risk_score(f: list[float]) -> float:
     return max(0.0, min(1.0, raw))
 
 
+def _compute_calibrated_confidence(
+    p_scam: float,
+    threshold: float,
+    f: list[float],
+    pillars: dict[str, float],
+    is_borderline: bool,
+    p_for: float,
+    sender_analysis: dict[str, object] | None = None,
+) -> float:
+    """Calibrate raw probability into evidence-grounded confidence percentage in [50.0, 96.8]."""
+    d = min(1.0, max(0.0, abs(p_scam - threshold) * 2.0))
+    if is_borderline:
+        agreement = max(0.0, 1.0 - abs(p_scam - p_for))
+        conf = 50.0 + 16.0 * d * agreement
+        return round(min(68.0, max(50.0, conf)), 1)
+
+    base = 50.0 + 30.0 * math.tanh(2.0 * d)
+    verdict = "SCAM" if p_scam >= threshold else "SAFE"
+    if verdict == "SCAM":
+        is_impersonation = bool(sender_analysis and sender_analysis.get("impersonation_risk"))
+        trap_score = min(
+            1.0,
+            f[8] * 0.45
+            + f[7] * 0.40
+            + f[11] * 0.40
+            + f[23] * 0.40
+            + f[9] * 0.35
+            + f[2] * 0.25
+            + f[3] * 0.20
+            + f[10] * 0.25
+            + f[13] * 0.20
+            + (0.35 if is_impersonation else 0.0),
+        )
+        risk_pillar_peak = max(
+            pillars.get("urgency_fear", 0.0),
+            pillars.get("authority_spoof", 0.0),
+            pillars.get("reward_lure", 0.0),
+            pillars.get("trap_vector", 0.0),
+        )
+        evidence = max(trap_score, risk_pillar_peak * 0.85)
+        boost = 16.8 * min(1.0, evidence) if evidence > 0.0 else 0.0
+    else:
+        is_promo = bool(sender_analysis and sender_analysis.get("type") == "dlt_promo")
+        safe_evidence = min(
+            1.0,
+            f[6] * 0.45
+            + f[26] * 0.35
+            + f[27] * 0.35
+            + f[24] * 0.30
+            + f[28] * 0.25
+            + f[14] * 0.25
+            + f[29] * 0.20
+            + f[25] * 0.15
+            + (0.20 if is_promo else 0.0),
+        )
+        evidence = max(safe_evidence, pillars.get("safe_counter_signals", 0.0) * 0.85)
+        boost = 16.8 * min(1.0, evidence) if evidence > 0.0 else 0.0
+
+    conf = base + boost
+    return round(min(96.8, max(50.0, conf)), 1)
+
+
 def _infer_sub_type(clean_text: str, forensics: ForensicsResult, category: str) -> str | None:
     low = clean_text.lower()
     f = forensics.features
@@ -119,6 +181,7 @@ class SatarkEngine:
                 try:
                     self.backbone = OnnxBackbone(self.onnx_dir, max_length=128)
                     self.stage_a_full = joblib.load(full_a)
+                    self.stage_a_full["lgbm"].set_params(n_jobs=1)
                     self.stage_b_full = joblib.load(full_b)
                     self.mode = "full_onnx_hybrid"
                     self.model_sha256 = self.backbone.get_sha256()
@@ -146,6 +209,7 @@ class SatarkEngine:
         canonical_texts: list[str],
         forensic_matrix: np.ndarray,
         use_full: bool,
+        logit_offset: float = 0.0,
     ) -> tuple[np.ndarray, np.ndarray]:
         x_sparse = self._build_sparse_features(canonical_texts, forensic_matrix)
 
@@ -164,7 +228,7 @@ class SatarkEngine:
             lgbm_probs = np.clip(lgbm_a.predict_proba(lgbm_in)[:, 1], 1e-6, 1.0 - 1e-6)
             lgbm_logits = np.log(lgbm_probs / (1.0 - lgbm_probs))
 
-            blended_logits = alpha * lr_logits + (1.0 - alpha) * lgbm_logits
+            blended_logits = alpha * lr_logits + (1.0 - alpha) * lgbm_logits + logit_offset
             p_scam = np.array([_platt_prob(float(z), platt_a, platt_b) for z in blended_logits], dtype=np.float64)
             p_cats = self.stage_b_full["clf"].predict_proba(x_hybrid)
             return p_scam, p_cats
@@ -173,7 +237,7 @@ class SatarkEngine:
         clf_a = self.stage_a_lite["clf"]
         platt_a = self.stage_a_lite["platt_a"]
         platt_b = self.stage_a_lite["platt_b"]
-        logits = clf_a.decision_function(x_sparse)
+        logits = clf_a.decision_function(x_sparse) + logit_offset
         p_scam = np.array([_platt_prob(float(z), platt_a, platt_b) for z in logits], dtype=np.float64)
         p_cats = self.stage_b_lite["clf"].predict_proba(x_sparse)
         return p_scam, p_cats
@@ -188,8 +252,8 @@ class SatarkEngine:
         use_full = (self.mode == "full_onnx_hybrid") and not force_lite
         active_mode = "lite_fallback" if force_lite else self.mode
 
-        # Low-signal guard: <2 alphanumeric chars and no URL
-        alnum_count = len(re.findall(r"[A-Za-z0-9\u0900-\u0d7f]", norm.clean_text))
+        # Low-signal guard: <2 alphanumeric chars (any script) and no URL
+        alnum_count = len(re.findall(r"[^\W_]", norm.clean_text))
         if alnum_count < 2 and f[0] == 0.0:
             latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
             return {
@@ -216,52 +280,39 @@ class SatarkEngine:
             }
 
         f_mat = np.array([f], dtype=np.float32)
+        sender_logit = 1.0 if forensics.sender_analysis.get("impersonation_risk") else 0.0
         p_scam_arr, p_cats_arr = self._predict_raw(
             [norm.clean_text],
             [norm.canonical_text],
             f_mat,
             use_full=use_full,
+            logit_offset=sender_logit,
         )
         p_scam = float(p_scam_arr[0])
         p_cats = p_cats_arr[0]
 
-        # Forensic Override Guard (Anti-Spoof)
-        if (f[8] > 0 or f[7] > 0 or f[11] > 0 or f[23] > 0) and p_scam < 0.65:
-            p_scam = max(p_scam, 0.78)
-        if forensics.sender_analysis.get("impersonation_risk"):
-            p_scam = max(p_scam, 0.85)
-
-        # Trusted-Evidence Guard (verified official links + zero risk triggers)
-        risk_trigger_count = sum(1 for t in forensics.triggers if t["polarity"] == "risk")
-        if (
-            f[6] > 0
-            and forensics.all_urls_official
-            and risk_trigger_count == 0
-            and f[7] == 0
-            and f[8] == 0
-            and f[9] == 0
-            and f[10] == 0
-            and f[11] == 0
-            and f[13] == 0
-            and f[23] == 0
-            and not forensics.sender_analysis.get("impersonation_risk")
-        ):
-            p_scam = min(p_scam, 0.15)
-
         threshold = float((self.stage_a_full if use_full else self.stage_a_lite).get("threshold", 0.5))
         verdict = "SCAM" if p_scam >= threshold else "SAFE"
-        confidence_pct = round(max(p_scam, 1.0 - p_scam) * 100.0, 1)
 
         # Dual-View Borderline Band
         p_for = _forensic_risk_score(f)
         ml_uncertain = 0.38 <= p_scam <= 0.68
         forensic_flag_on_safe = p_scam < 0.38 and p_for >= 0.65
         safe_counter_on_scam = 0.50 <= p_scam < 0.85 and p_for <= 0.25
-        if ml_uncertain or forensic_flag_on_safe or safe_counter_on_scam:
+        is_borderline = ml_uncertain or forensic_flag_on_safe or safe_counter_on_scam
+
+        confidence_pct = _compute_calibrated_confidence(
+            p_scam=p_scam,
+            threshold=threshold,
+            f=f,
+            pillars=forensics.pillars,
+            is_borderline=is_borderline,
+            p_for=p_for,
+            sender_analysis=forensics.sender_analysis,
+        )
+
+        if is_borderline:
             certainty_tier = "Borderline — Verify Manually"
-            if not ml_uncertain:
-                disagreement_cap = round(max(50.0, 100.0 - abs(p_scam - p_for) * 65.0), 1)
-                confidence_pct = min(confidence_pct, disagreement_cap)
         elif confidence_pct < 82.0:
             certainty_tier = "Moderate"
         else:

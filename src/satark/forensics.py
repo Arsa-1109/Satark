@@ -73,14 +73,16 @@ OFFICIAL_DOMAINS = frozenset({
     "makemytrip.com", "goibibo.com", "uber.com", "olacabs.com", "urbancompany.com",
     "dominos.co.in", "decathlon.in", "bsesdelhi.com", "bescom.co.in", "tatapower.com",
     "bseindia.com", "nseindia.com", "sebi.gov.in", "trai.gov.in", "dot.gov.in",
-    "github.com", "linkedin.com", "naukri.com", "internshala.com", "zerodha.com",
-    "groww.in", "cred.club", "jiocinema.com", "hotstar.com", "youtu.be",
-    "youtube.com", "forms.gle", "google.com",
+    "linkedin.com", "naukri.com", "internshala.com", "zerodha.com",
+    "groww.in", "cred.club", "jiocinema.com", "hotstar.com",
     "sihub.in", "billdesk.com", "hdfcbk.io", "kotak.in", "axbk.in",
     "sbi.in", "icicibank.in", "canarabank.com", "unionbankofindia.co.in",
     "federalbank.co.in", "yesbank.in", "indusind.com", "idfcfirstbank.com",
     "incometax.gov.in", "licindia.in", "gst.gov.in", "passportindia.gov.in",
-    "licindia.com", "ajio.com", "nsdl.co.in", "urbancompany.com",
+    "licindia.com", "ajio.com", "nsdl.co.in",
+    "hdfcergo.com", "hdfclife.com", "icicilombard.com", "iciciprulife.com",
+    "sbilife.co.in", "sbicard.com", "axisdirect.in", "kotaklife.com",
+    "bajajfinserv.in", "bsnl.co.in", "goindigo.in", "pizzahut.co.in", "puma.com",
 })
 
 BRAND_KEYWORDS = (
@@ -150,7 +152,10 @@ _SENDER_DLT_RE = re.compile(r"^[A-Z]{2}-[A-Z0-9]{5,6}(?:-([TSGP]))?$", re.IGNORE
 _SENDER_MOBILE_RE = re.compile(r"^(?:\+91[\-\s]?)?[6-9]\d{9}$")
 _TOLLFREE_RE = re.compile(r"(?:1800[\-\s]?\d{3}[\-\s]?\d{4}|\b1930\b)")
 _CURRENCY_RE = re.compile(r"(?:(?:rs\.?|inr|₹)\s*(\d[\d,]*(?:\.\d+)?)|\b(\d+(?:\.\d+)?)\s*(lakh|crore|k)\b)", re.IGNORECASE)
-_ASKS_OTP_RE = re.compile(r"\b(?:share|send|enter|tell|provide|verify|batao|bhejo)\b.{0,20}\b(?:otp|pin|cvv|mpin|password)\b", re.IGNORECASE)
+_ASKS_OTP_RE = re.compile(
+    r"\b(?:share|send|enter|tell|provide|verify|read(?:\s+me)?|forward|confirm|batao|bhejo)\b.{0,25}\b(?:otp|pin|cvv|mpin|password|(?:4|6)[\s-]?digit\s+(?:code|otp|pin)|(?:confirmation|verification|security)\s+code)\b",
+    re.IGNORECASE,
+)
 _OTP_DO_NOT_SHARE_RE = re.compile(r"\b(?:do\s*not|don'?t|never(?:\s+need\s+to)?|mat|pls\s*do\s*not)\b.{0,20}\b(?:share|disclose|tell|enter|batana)\b(?:\s.{0,20}\b(?:otp|pin|cvv|code|password)\b)?", re.IGNORECASE)
 _AWARENESS_PSA_RE = re.compile(
     r"\b(?:beware\s+(?:of|dealing)|unsolicited\s+tips|take\s+informed\s+decision|use\s+telecom\s+services\s+responsibly|official\s+and\s+legitimate|rbi\s+kehta\s+hai|report\s+cyber\s*fraud|cyber\s*dost|stay\s+safe\s+from\s+fraud)\b",
@@ -161,7 +166,11 @@ _PHYSICAL_HANDOVER_RE = re.compile(
     re.IGNORECASE,
 )
 _UPI_VPA_RE = re.compile(
-    r"\b[a-z0-9.\-_]{3,}@(?:ybl|okicici|okaxis|oksbi|okhdfcbank|paytm|ibl|axl|upi|apl)\b",
+    r"\b[a-z0-9.\-_]{3,}@(?:ybl|okicici|okaxis|oksbi|okhdfcbank|paytm|ibl|axl|upi|apl|icici|hdfcbank|sbi|kotak|pingpay|airtel|jio|freecharge|fbl)\b",
+    re.IGNORECASE,
+)
+_IMPERSONATION_CUE_RE = re.compile(
+    r"\b(?:dear\s+(?:customer|user|account\s+holder)|account\s+(?:is\s+)?(?:blocked|suspended|deactivated)|verify\s+(?:your\s+)?kyc|update\s+(?:your\s+)?(?:kyc|pan))\b",
     re.IGNORECASE,
 )
 _DLT_HEADER_RE = re.compile(r"\b[A-Z]{2}-[A-Z0-9]{5,6}(?:-[TSGP])?\b")
@@ -471,7 +480,17 @@ def extract_forensics(norm: NormalizedResult, sender: str | None = None) -> Fore
                 add_trigger(dlt_header, "Registered TRAI DLT promotional sender ID", "safe")
         elif sm_mob:
             sender_analysis["type"] = "personal_mobile"
-            if mentions_brand or kyc_bank_lex_score > 0 or threat_authority_score > 0 or reward_lure_score > 0:
+            has_inst_cue = (
+                has_url > 0.0
+                or asks_otp_or_pin > 0.0
+                or has_apk_lure > 0.0
+                or has_remote_access_app > 0.0
+                or upi_collect_cashback_trap > 0.0
+                or urgency_score > 0.0
+                or threat_authority_score > 0.0
+                or bool(_IMPERSONATION_CUE_RE.search(canon))
+            )
+            if (mentions_brand or kyc_bank_lex_score > 0 or threat_authority_score > 0) and has_inst_cue:
                 sender_analysis["impersonation_risk"] = True
                 add_trigger(sender_clean, "Personal mobile sender impersonating institutional brand", "risk")
         else:

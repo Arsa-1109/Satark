@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import statistics
 import sys
@@ -11,15 +12,27 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import brier_score_loss, f1_score
+from sklearn.metrics import brier_score_loss, classification_report, confusion_matrix, f1_score, precision_score, recall_score
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from satark.engine import CATEGORIES, SatarkEngine  # noqa: E402
 
-DATA_PROC = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\data\processed")
-BENCH_FULL_DIR = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse\benchmarks")
+
+def _resolve_base_dir() -> Path:
+    env_dir = os.environ.get("SATARK_DATA_DIR")
+    if env_dir:
+        return Path(env_dir).parent
+    default_dir = Path(r"C:\Users\arsal\Desktop\Projects\TinyVerse")
+    if default_dir.exists():
+        return default_dir
+    return ROOT
+
+
+_BASE = _resolve_base_dir()
+DATA_PROC = _BASE / "data" / "processed"
+BENCH_FULL_DIR = _BASE / "benchmarks"
 LITE_SUMMARY_PATH = ROOT / "models" / "lite" / "benchmarks_summary.json"
 PWA_SUMMARY_PATH = ROOT / "frontend" / "public" / "benchmarks_summary.json"
 
@@ -63,6 +76,7 @@ def evaluate_mode(
     tx_df: pd.DataFrame,
     multi_df: pd.DataFrame,
     ads_df: pd.DataFrame,
+    gen_df: pd.DataFrame,
     force_lite: bool,
 ) -> tuple[dict, list[dict]]:
     # 1. Unseen test
@@ -73,7 +87,10 @@ def evaluate_mode(
     cat_pred: list[str] = []
 
     latencies: list[float] = []
-    for idx, row in unseen_df.iterrows():
+    total_unseen = len(unseen_df)
+    for row_num, (_, row) in enumerate(unseen_df.iterrows(), 1):
+        if row_num % 500 == 0 or row_num == total_unseen:
+            print(f"  [unseen] {row_num}/{total_unseen}...", flush=True)
         t0 = time.perf_counter()
         res = engine.analyze(str(row["text"]), force_lite=force_lite)
         dt = (time.perf_counter() - t0) * 1000.0
@@ -92,7 +109,12 @@ def evaluate_mode(
     y_prob_arr = np.array(y_prob, dtype=np.float64)
 
     unseen_f1 = float(f1_score(y_true, y_pred_arr))
+    unseen_prec = float(precision_score(y_true, y_pred_arr, zero_division=0))
+    unseen_rec = float(recall_score(y_true, y_pred_arr, zero_division=0))
+    tn_u, fp_u, fn_u, tp_u = [int(x) for x in confusion_matrix(y_true, y_pred_arr, labels=[0, 1]).ravel()]
     macro_f1 = float(f1_score(cat_true, cat_pred, labels=list(CATEGORIES), average="macro"))
+    cat_f1s = f1_score(cat_true, cat_pred, labels=list(CATEGORIES), average=None, zero_division=0)
+    per_category_f1 = {cat: round(float(v), 4) for cat, v in zip(CATEGORIES, cat_f1s)}
     ece, curve = compute_ece(y_true, y_prob_arr, n_bins=10)
     brier = float(brier_score_loss(y_true, y_prob_arr))
 
@@ -161,14 +183,33 @@ def evaluate_mode(
             ads_fp += 1
     ads_fpr_pct = (ads_fp / max(len(ads_df), 1)) * 100.0
 
+    # 9. Strictly Blind Real-World Generalization Suite (Gate G15)
+    gen_y_true = gen_df["label"].to_numpy(dtype=np.int32)
+    gen_y_pred: list[int] = []
+    for _, row in gen_df.iterrows():
+        res = engine.analyze(str(row["text"]), force_lite=force_lite)
+        gen_y_pred.append(1 if res["verdict"] == "SCAM" else 0)
+    gen_pred_arr = np.array(gen_y_pred, dtype=np.int32)
+    tn_g, fp_g, fn_g, tp_g = [int(x) for x in confusion_matrix(gen_y_true, gen_pred_arr, labels=[0, 1]).ravel()]
+    gen_prec = float(precision_score(gen_y_true, gen_pred_arr, zero_division=0))
+    gen_rec = float(recall_score(gen_y_true, gen_pred_arr, zero_division=0))
+    gen_f1 = float(f1_score(gen_y_true, gen_pred_arr, zero_division=0))
+    gen_acc = float((tp_g + tn_g) / max(len(gen_df), 1))
+    gen_fpr_pct = (fp_g / max(fp_g + tn_g, 1)) * 100.0
+    gen_fnr_pct = (fn_g / max(fn_g + tp_g, 1)) * 100.0
+
     median_ms = float(statistics.median(latencies[5:])) if len(latencies) > 10 else float(statistics.median(latencies))
 
     metrics = {
         "unseen_f1": round(unseen_f1, 4),
+        "unseen_precision": round(unseen_prec, 4),
+        "unseen_recall": round(unseen_rec, 4),
+        "unseen_confusion": {"tn": tn_u, "fp": fp_u, "fn": fn_u, "tp": tp_u},
         "hard_neg_fpr_pct": round(hn_fpr_pct, 2),
         "hard_neg_fp_count": hn_fp,
         "hard_neg_total": len(hn_df),
         "macro_f1_5class": round(macro_f1, 4),
+        "per_category_f1": per_category_f1,
         "adversarial_recall": round(adv_recall, 4),
         "ece": round(ece, 4),
         "brier_score": round(brier, 4),
@@ -189,6 +230,13 @@ def evaluate_mode(
         "ads_safe_fpr_pct": round(ads_fpr_pct, 2),
         "ads_safe_fp_count": ads_fp,
         "ads_safe_total": len(ads_df),
+        "blind_gen_f1": round(gen_f1, 4),
+        "blind_gen_precision": round(gen_prec, 4),
+        "blind_gen_recall": round(gen_rec, 4),
+        "blind_gen_accuracy": round(gen_acc, 4),
+        "blind_gen_fpr_pct": round(gen_fpr_pct, 2),
+        "blind_gen_fnr_pct": round(gen_fnr_pct, 2),
+        "blind_gen_confusion": {"tn": tn_g, "fp": fp_g, "fn": fn_g, "tp": tp_g},
     }
     return metrics, curve
 
@@ -203,12 +251,13 @@ def main() -> None:
     tx_df = pd.read_csv(DATA_PROC / "test_transactional_safe.csv")
     multi_df = pd.read_csv(DATA_PROC / "test_blind_multilingual.csv")
     ads_df = pd.read_csv(DATA_PROC / "test_ads_safe.csv")
+    gen_df = pd.read_csv(DATA_PROC / "test_blind_generalization.csv")
 
     engine = SatarkEngine()
     print("Evaluating Full ONNX Hybrid...")
-    full_metrics, full_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, multi_df, ads_df, force_lite=False)
+    full_metrics, full_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, multi_df, ads_df, gen_df, force_lite=False)
     print("Evaluating Lite Fallback...")
-    lite_metrics, lite_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, multi_df, ads_df, force_lite=True)
+    lite_metrics, lite_curve = evaluate_mode(engine, unseen_df, hn_df, adv_df, stress_df, ood_df, tx_df, multi_df, ads_df, gen_df, force_lite=True)
 
     summary = {
         "full_onnx_hybrid": full_metrics,
@@ -225,6 +274,7 @@ def main() -> None:
             "G12_transactional_promo_fpr_le_4pct": full_metrics["transactional_fpr_pct"] <= 4.0 and lite_metrics["transactional_fpr_pct"] <= 4.0,
             "G13_blind_multilingual_ge_92pct": full_metrics["blind_multilingual_accuracy"] >= 0.92,
             "G14_commercial_ads_fpr_le_5pct": full_metrics["ads_safe_fpr_pct"] <= 5.0 and lite_metrics["ads_safe_fpr_pct"] <= 5.0,
+            "G15_blind_generalization_f1_ge_0.85": full_metrics["blind_gen_f1"] >= 0.85 and lite_metrics["blind_gen_f1"] >= 0.80,
         },
         "calibration_curve": full_curve,
     }

@@ -33,9 +33,9 @@ const CONFUSABLES = {
 
 const SPACED_PART_RE = /\b([a-zA-Z](?:[.\-_\s]{1,2}[a-zA-Z]){2,7})\b/g;
 const LEET_MAP = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s" };
-const PURE_CODE_RE = /^(?:xx+\d+|\*+\d+|rs\.?\d+|\d{1,4}[a-z]{1,4}|[a-z]{2,}\d{1,5}|[a-z]{1,3}\d{3,}|v\d+(?:\.\d+)*)$/i;
+const PURE_CODE_RE = /^(?:xx+\d+|\*+\d+|rs\.?\d+|\d{1,4}[a-z]{1,4}|[a-z]{2,}\d{1,5}|[a-z]{1,3}\d{3,}|[a-z]{2}\d{2}[a-z]{1,3}\d{4}|\d[a-z]\d{3,4}|[a-z]{1,4}\d{3,}[a-z0-9]*|v\d+(?:\.\d+)*)$/i;
 const TOKEN_RE = /[A-Za-z0-9@$]+/g;
-const URL_SPAN_RE = /(?:https?:\/\/|upi:\/\/|www\.)\S+|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}\/\S+/gi;
+const URL_SPAN_RE = /(?:https?:\/\/|upi:\/\/|www\.)\S+|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}\/\S+|\b[a-z0-9][a-z0-9._-]*@[a-z0-9][a-z0-9.-]*\b|\b[a-z]{2}[\s-]?\d{2}[\s-]?[a-z]{1,3}[\s-]?\d{4}\b/gi;
 
 const HINGLISH_MAP = [
   [/\b(?:paise|pese|paisaa)\b/gi, "paisa"],
@@ -156,14 +156,16 @@ const OFFICIAL_DOMAINS = [
   "makemytrip.com", "goibibo.com", "uber.com", "olacabs.com", "urbancompany.com",
   "dominos.co.in", "decathlon.in", "bsesdelhi.com", "bescom.co.in", "tatapower.com",
   "bseindia.com", "nseindia.com", "sebi.gov.in", "trai.gov.in", "dot.gov.in",
-  "github.com", "linkedin.com", "naukri.com", "internshala.com", "zerodha.com",
-  "groww.in", "cred.club", "jiocinema.com", "hotstar.com", "youtu.be",
-  "youtube.com", "forms.gle", "google.com",
+  "linkedin.com", "naukri.com", "internshala.com", "zerodha.com",
+  "groww.in", "cred.club", "jiocinema.com", "hotstar.com",
   "sihub.in", "billdesk.com", "hdfcbk.io", "kotak.in", "axbk.in",
   "sbi.in", "icicibank.in", "canarabank.com", "unionbankofindia.co.in",
   "federalbank.co.in", "yesbank.in", "indusind.com", "idfcfirstbank.com",
   "incometax.gov.in", "licindia.in", "gst.gov.in", "passportindia.gov.in",
-  "licindia.com", "ajio.com", "nsdl.co.in", "urbancompany.com",
+  "licindia.com", "ajio.com", "nsdl.co.in",
+  "hdfcergo.com", "hdfclife.com", "icicilombard.com", "iciciprulife.com",
+  "sbilife.co.in", "sbicard.com", "axisdirect.in", "kotaklife.com",
+  "bajajfinserv.in", "bsnl.co.in", "goindigo.in", "pizzahut.co.in", "puma.com",
 ];
 
 const BRAND_KEYWORDS = [
@@ -216,11 +218,12 @@ const SENDER_DLT_RE = /^[A-Z]{2}-[A-Z0-9]{5,6}(?:-([TSGP]))?$/i;
 const SENDER_MOBILE_RE = /^(?:\+91[-\s]?)?[6-9]\d{9}$/;
 const TOLLFREE_RE = /(?:1800[-\s]?\d{3}[-\s]?\d{4}|\b1930\b)/;
 const CURRENCY_RE = /(?:(?:rs\.?|inr|₹)\s*(\d[\d,]*(?:\.\d+)?)|\b(\d+(?:\.\d+)?)\s*(lakh|crore|k)\b)/gi;
-const ASKS_OTP_RE = /\b(?:share|send|enter|tell|provide|verify|batao|bhejo)\b.{0,20}\b(?:otp|pin|cvv|mpin|password)\b/i;
+const ASKS_OTP_RE = /\b(?:share|send|enter|tell|provide|verify|read(?:\s+me)?|forward|confirm|batao|bhejo)\b.{0,25}\b(?:otp|pin|cvv|mpin|password|(?:4|6)[\s-]?digit\s+(?:code|otp|pin)|(?:confirmation|verification|security)\s+code)\b/i;
 const OTP_DO_NOT_SHARE_RE = /\b(?:do\s*not|don'?t|never(?:\s+need\s+to)?|mat|pls\s*do\s*not)\b.{0,20}\b(?:share|disclose|tell|enter|batana)\b(?:\s.{0,20}\b(?:otp|pin|cvv|code|password)\b)?/i;
 const AWARENESS_PSA_RE = /\b(?:beware\s+(?:of|dealing)|unsolicited\s+tips|take\s+informed\s+decision|use\s+telecom\s+services\s+responsibly|official\s+and\s+legitimate|rbi\s+kehta\s+hai|report\s+cyber\s*fraud|cyber\s*dost|stay\s+safe\s+from\s+fraud)\b/i;
 const PHYSICAL_HANDOVER_RE = /\b(?:driver|trip|cab|ride|uber|ola|rapido|delivery\s*(?:boy|partner|agent|executive)|doorstep|at\s+the\s+gate|amazon\s+delivery|flipkart\s+delivery)\b/i;
-const UPI_VPA_RE = /\b[a-z0-9.\-_]{3,}@(?:ybl|okicici|okaxis|oksbi|okhdfcbank|paytm|ibl|axl|upi|apl)\b/i;
+const UPI_VPA_RE = /\b[a-z0-9.\-_]{3,}@(?:ybl|okicici|okaxis|oksbi|okhdfcbank|paytm|ibl|axl|upi|apl|icici|hdfcbank|sbi|kotak|pingpay|airtel|jio|freecharge|fbl)\b/i;
+const IMPERSONATION_CUE_RE = /\b(?:dear\s+(?:customer|user|account\s+holder)|account\s+(?:is\s+)?(?:blocked|suspended|deactivated)|verify\s+(?:your\s+)?kyc|update\s+(?:your\s+)?(?:kyc|pan))\b/i;
 const DLT_HEADER_RE = /\b[A-Z]{2}-[A-Z0-9]{5,6}(?:-[TSGP])?\b/;
 const DLT_TX_SUFFIX_RE = /\b[A-Z]{2}-[A-Z0-9]{5,6}-[TSG]\b/;
 const BANK_TX_RE = /(?:\b(?:debited|credited|spent|withdrawn|auto-debited|autodebited)\b.{0,45}\b(?:a\/c|ac|acct|account|card)\b.{0,25}(?:x{1,8}\d{3,4}|\*{1,4}\d{3,4}|ending\s+\d{4}|\.\.\.\d{4})|\b(?:a\/c|ac|acct|account|card)\b.{0,25}(?:x{1,8}\d{3,4}|\*{1,4}\d{3,4}|ending\s+\d{4}|\.\.\.\d{4}).{0,45}\b(?:debited|credited|spent|withdrawn|declined)\b|\b(?:amt\s+)?sent\s+(?:rs\.?|inr|₹)\s*[\d,]+.{0,35}\b(?:from|a\/c|ac)\b|\bthank\s+you\s+for\s+using\s+your\b.{0,35}\b(?:debit|credit)\s+card\b|\btransaction\s+of\s+(?:rs\.?|inr|₹)\s*[\d,]+.{0,50}\bcard\b.{0,30}\b(?:declined|approved)\b|\b(?:neft|imps|rtgs)\s+transfer\s+of\s+(?:rs\.?|inr|₹)\s*[\d,]+.{0,60}\b(?:processed|credited|completed)\b|\bcheque\s+no\.?\s*\d+.{0,50}\bcleared\b)/i;
@@ -483,7 +486,16 @@ export function extractForensics(norm, sender = null) {
       }
     } else if (smMob) {
       sender_analysis.type = "personal_mobile";
-      if (mentionsBrand || kyc_bank_lex_score > 0 || threat_authority_score > 0 || reward_lure_score > 0) {
+      const hasInstCue =
+        has_url > 0 ||
+        asks_otp_or_pin > 0 ||
+        has_apk_lure > 0 ||
+        has_remote_access_app > 0 ||
+        upi_collect_cashback_trap > 0 ||
+        urgency_score > 0 ||
+        threat_authority_score > 0 ||
+        IMPERSONATION_CUE_RE.test(canon);
+      if ((mentionsBrand || kyc_bank_lex_score > 0 || threat_authority_score > 0) && hasInstCue) {
         sender_analysis.impersonation_risk = true;
         addTrigger(senderClean, "Personal mobile sender impersonating institutional brand", "risk");
       }
@@ -644,6 +656,62 @@ function forensicRiskScore(f) {
   return Math.max(0.0, Math.min(1.0, 0.5 + (risk - safe)));
 }
 
+function computeCalibratedConfidence(pScam, threshold, f, pillars, isBorderline, pFor, senderAnalysis = null) {
+  const d = Math.min(1.0, Math.max(0.0, Math.abs(pScam - threshold) * 2.0));
+  if (isBorderline) {
+    const agreement = Math.max(0.0, 1.0 - Math.abs(pScam - pFor));
+    const conf = 50.0 + 16.0 * d * agreement;
+    return Math.round(Math.min(68.0, Math.max(50.0, conf)) * 10) / 10;
+  }
+
+  const base = 50.0 + 30.0 * Math.tanh(2.0 * d);
+  const verdict = pScam >= threshold ? "SCAM" : "SAFE";
+  let boost = 0.0;
+  if (verdict === "SCAM") {
+    const isImpersonation = Boolean(senderAnalysis?.impersonation_risk);
+    const trapScore = Math.min(
+      1.0,
+      f[8] * 0.45 +
+      f[7] * 0.40 +
+      f[11] * 0.40 +
+      f[23] * 0.40 +
+      f[9] * 0.35 +
+      f[2] * 0.25 +
+      f[3] * 0.20 +
+      f[10] * 0.25 +
+      f[13] * 0.20 +
+      (isImpersonation ? 0.35 : 0.0)
+    );
+    const riskPillarPeak = Math.max(
+      pillars?.urgency_fear || 0.0,
+      pillars?.authority_spoof || 0.0,
+      pillars?.reward_lure || 0.0,
+      pillars?.trap_vector || 0.0
+    );
+    const evidence = Math.max(trapScore, riskPillarPeak * 0.85);
+    boost = evidence > 0.0 ? 16.8 * Math.min(1.0, evidence) : 0.0;
+  } else {
+    const isPromo = Boolean(senderAnalysis?.type === "dlt_promo");
+    const safeEvidence = Math.min(
+      1.0,
+      f[6] * 0.45 +
+      f[26] * 0.35 +
+      f[27] * 0.35 +
+      f[24] * 0.30 +
+      f[28] * 0.25 +
+      f[14] * 0.25 +
+      f[29] * 0.20 +
+      f[25] * 0.15 +
+      (isPromo ? 0.20 : 0.0)
+    );
+    const evidence = Math.max(safeEvidence, (pillars?.safe_counter_signals || 0.0) * 0.85);
+    boost = evidence > 0.0 ? 16.8 * Math.min(1.0, evidence) : 0.0;
+  }
+
+  const conf = base + boost;
+  return Math.round(Math.min(96.8, Math.max(50.0, conf)) * 10) / 10;
+}
+
 function inferSubType(cleanText, f, category) {
   const low = cleanText.toLowerCase();
   if (f[8] > 0 || low.includes(".apk")) return "Malicious APK";
@@ -702,7 +770,7 @@ export function analyzeLocal(text, source = "text", modelBundle = null, sender =
   const fr = extractForensics(norm, sender);
   const f = fr.features;
 
-  const alnumMatches = norm.cleanText.match(/[A-Za-z0-9\u0900-\u0d7f]/g);
+  const alnumMatches = norm.cleanText.match(/[\p{L}\p{N}]/gu);
   if ((alnumMatches ? alnumMatches.length : 0) < 2 && f[0] === 0) {
     return {
       verdict: "SAFE",
@@ -737,48 +805,32 @@ export function analyzeLocal(text, source = "text", modelBundle = null, sender =
     return s;
   };
 
-  const logitA = dotSparse(bundle.stage_a.coef, bundle.stage_a.intercept);
-  let pScam = plattProb(logitA, bundle.stage_a.platt_a, bundle.stage_a.platt_b);
+  const senderLogit = fr.sender_analysis?.impersonation_risk ? 1.0 : 0.0;
+  const logitA = dotSparse(bundle.stage_a.coef, bundle.stage_a.intercept) + senderLogit;
+  const pScam = plattProb(logitA, bundle.stage_a.platt_a, bundle.stage_a.platt_b);
 
-  if ((f[8] > 0 || f[7] > 0 || f[11] > 0 || f[23] > 0) && pScam < 0.65) {
-    pScam = Math.max(pScam, 0.78);
-  }
-  if (fr.sender_analysis?.impersonation_risk) {
-    pScam = Math.max(pScam, 0.85);
-  }
-
-  // Trusted-Evidence Guard (verified official links + zero risk triggers)
-  const riskTriggerCount = fr.triggers.filter((t) => t.polarity === "risk").length;
-  if (
-    f[6] > 0 &&
-    fr.all_urls_official &&
-    riskTriggerCount === 0 &&
-    f[7] === 0 &&
-    f[8] === 0 &&
-    f[9] === 0 &&
-    f[10] === 0 &&
-    f[11] === 0 &&
-    f[13] === 0 &&
-    f[23] === 0 &&
-    !fr.sender_analysis?.impersonation_risk
-  ) {
-    pScam = Math.min(pScam, 0.15);
-  }
-
-  const verdict = pScam >= bundle.stage_a.threshold ? "SCAM" : "SAFE";
-  let confidencePct = Math.round(Math.max(pScam, 1.0 - pScam) * 1000) / 10;
+  const threshold = bundle.stage_a.threshold;
+  const verdict = pScam >= threshold ? "SCAM" : "SAFE";
 
   const pFor = forensicRiskScore(f);
-  let certaintyTier = "High Certainty";
   const mlUncertain = pScam >= 0.38 && pScam <= 0.68;
   const forensicFlagOnSafe = pScam < 0.38 && pFor >= 0.65;
   const safeCounterOnScam = pScam >= 0.50 && pScam < 0.85 && pFor <= 0.25;
-  if (mlUncertain || forensicFlagOnSafe || safeCounterOnScam) {
+  const isBorderline = mlUncertain || forensicFlagOnSafe || safeCounterOnScam;
+
+  const confidencePct = computeCalibratedConfidence(
+    pScam,
+    threshold,
+    f,
+    fr.pillars,
+    isBorderline,
+    pFor,
+    fr.sender_analysis
+  );
+
+  let certaintyTier = "High Certainty";
+  if (isBorderline) {
     certaintyTier = "Borderline — Verify Manually";
-    if (!mlUncertain) {
-      const disagreementCap = Math.round(Math.max(50.0, 100.0 - Math.abs(pScam - pFor) * 65.0) * 10) / 10;
-      confidencePct = Math.min(confidencePct, disagreementCap);
-    }
   } else if (confidencePct < 82.0) {
     certaintyTier = "Moderate";
   }

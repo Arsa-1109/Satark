@@ -243,3 +243,51 @@ def test_cli_report_flag() -> None:
     )
     assert "Sanchar Saathi Chakshu / 1930 Cybercrime Report Draft" in proc.stdout
     assert "bit.ly/sbi-kyc" in proc.stdout
+
+
+def test_normalizer_preserves_vpa_email_plate() -> None:
+    from satark.normalizer import normalize_text
+
+    for s in (
+        "Bro send Rs 8000 to 9811223344@paytm right now",
+        "My UPI is arsalan.dev@okaxis",
+        "Email us at support@hdfcbank.com",
+        "Vehicle KA03MN4821 has challan",
+    ):
+        n = normalize_text(s)
+        assert n.clean_text == s
+        assert n.obfuscations == []
+
+    leet = normalize_text("Urgent l04n offer from b4nk k.y.c")
+    assert "leetspeak" in leet.obfuscations
+    assert "spaced_token" in leet.obfuscations
+    assert "loan" in leet.canonical_text
+    assert "bank" in leet.canonical_text
+
+
+def test_abusable_official_hosts_not_whitelisted() -> None:
+    r1 = engine.analyze("Dear SBI Customer, please update your PAN and Aadhaar details before 5 PM to avoid account restriction: https://forms.gle/sbiKyc2026")
+    assert r1["verdict"] == "SCAM"
+    r2 = engine.analyze("Income tax refund of Rs 14,200 is pending. Submit bank details on https://docs.google.com/forms/d/e/fake-itr")
+    assert r2["verdict"] == "SCAM"
+
+
+def test_personal_mobile_sender_fairness() -> None:
+    casual_bank = engine.analyze("Hey bro did you check your HDFC bank statement yet?", sender="+919876543210")
+    assert casual_bank["verdict"] == "SAFE"
+    assert casual_bank["forensics"]["sender_analysis"]["impersonation_risk"] is False
+
+    casual_prize = engine.analyze("Congrats! You won the college quiz prize today!", sender="+919876543210")
+    assert casual_prize["verdict"] == "SAFE"
+    assert casual_prize["forensics"]["sender_analysis"]["impersonation_risk"] is False
+
+    real_spoof = engine.analyze("Dear customer, your SBI YONO account is suspended. Verify KYC immediately.", sender="+919876543210")
+    assert real_spoof["verdict"] == "SCAM"
+    assert real_spoof["forensics"]["sender_analysis"]["impersonation_risk"] is True
+
+
+def test_zero_hardcoded_probability_clamps() -> None:
+    engine_src = (ROOT / "src" / "satark" / "engine.py").read_text(encoding="utf-8")
+    assert "max(p_scam, 0.78)" not in engine_src
+    assert "max(p_scam, 0.85)" not in engine_src
+    assert "min(p_scam, 0.15)" not in engine_src

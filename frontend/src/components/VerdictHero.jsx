@@ -41,11 +41,9 @@ export function VerdictHero({ result, verdictRef, lang = "en", labMode = false, 
   const summary = buildHumanSummary(result, lang);
   const checklist = getSafetyChecklist(result, lang);
 
-  const displayPct = isBorderline
-    ? Math.min(100, Math.max(0, result.scam_probability * 100))
-    : Math.min(100, Math.max(0, result.confidence_pct));
+  const displayPct = Math.min(97.5, Math.max(50.0, result.confidence_pct));
   const metricLabel = isBorderline
-    ? copy.borderlineRiskLabel
+    ? (copy.borderlineConfidenceLabel || copy.borderlineRiskLabel)
     : isScam
     ? copy.scamConfidenceLabel
     : copy.safeConfidenceLabel;
